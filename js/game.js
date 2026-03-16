@@ -2074,8 +2074,10 @@ class Game {
       this.log("金币不足！", "system");
       return;
     }
+
+    // 道具栏满：允许直接选择替换槽位
     if (this.items.length >= 4) {
-      this.showModal("道具栏已满", "当前已装备 4 件道具，无法继续购买。\n请到战斗中或在商店出售卡牌后，再考虑购买新道具。");
+      this.openShopReplaceItemModal(item, idx);
       return;
     }
     
@@ -2088,6 +2090,56 @@ class Game {
     
     if (window.audioManager) window.audioManager.shopBuy();
     this.log(`购买道具：${item.name}`, "player");
+  }
+
+  openShopReplaceItemModal(shopItem, shopIdx) {
+    const modal = document.getElementById("shop-replace-modal");
+    const desc = document.getElementById("shop-replace-desc");
+    const slots = document.getElementById("shop-replace-slots");
+    const cancel = document.getElementById("shop-replace-cancel");
+    if (!modal || !slots) {
+      // 兜底：没有弹窗就按旧逻辑提示
+      this.showModal("道具栏已满", "当前已装备 4 件道具，无法继续购买。");
+      return;
+    }
+
+    const itemData = typeof ITEMS_DB !== "undefined" ? ITEMS_DB[shopItem.id] : null;
+    if (desc) desc.textContent = `购买 ${itemData ? `${itemData.icon} ${itemData.name}` : shopItem.name}（💰 ${shopItem.cost}），请选择要替换的道具：`;
+
+    slots.innerHTML = "";
+    for (let i = 0; i < 4; i++) {
+      const curId = this.items[i];
+      const cur = curId && typeof ITEMS_DB !== "undefined" ? ITEMS_DB[curId] : null;
+      const btn = document.createElement("button");
+      btn.className = "secondary-btn save-slot-btn";
+      btn.innerHTML = `
+        <div class="save-slot-title">槽位 ${i + 1}</div>
+        <div class="save-slot-time">${cur ? `${cur.icon || "🎁"} ${cur.name || curId}` : "空"}</div>
+      `;
+      btn.title = cur ? (cur.detail || cur.description || "") : "";
+      btn.onclick = () => {
+        if ((this.gold || 0) < shopItem.cost) {
+          this.log("金币不足！", "system");
+          modal.classList.add("hidden");
+          return;
+        }
+        this.gold -= shopItem.cost;
+        this.items[i] = shopItem.id;
+        this.incStat("itemsBought", 1);
+        this.shopItems.shopItems.splice(shopIdx, 1);
+        this.refreshShopUI();
+        this.renderItems();
+        this.updateGoldDisplay();
+        if (window.audioManager) window.audioManager.shopBuy();
+        this.log(`替换道具：槽位${i + 1} → ${itemData ? itemData.name : shopItem.name}`, "player");
+        modal.classList.add("hidden");
+      };
+      slots.appendChild(btn);
+    }
+
+    if (cancel) cancel.onclick = () => modal.classList.add("hidden");
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add("hidden"); };
+    modal.classList.remove("hidden");
   }
 
   sellCard(idx) {
