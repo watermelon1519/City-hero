@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>城市英雄 - 街头卡牌对决</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/pixel.css">
+  <style>
+    /* 像素风字体 */
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+    
+    .pixel-title {
+      font-family: 'Press Start 2P', cursive;
+      text-shadow: 3px 3px 0 #000;
+    }
+  </style>
+</head>
+<body class="pixel-mode theme-street">
+  <!-- 开始页面 -->
+  <div id="start-screen" class="start-screen">
+    <div class="start-bg-animation"></div>
+    <div class="start-content">
+      <h1 class="start-title pixel-title">城市英雄</h1>
+      <p class="start-subtitle">街头卡牌对决</p>
+      <div class="start-menu">
+        <button id="btn-start-game" class="start-btn">🎮 开始游戏</button>
+        <button id="btn-continue-game" class="start-btn" disabled>📂 继续游戏</button>
+        <button id="btn-achievements" class="start-btn">🏆 成就</button>
+        <button id="btn-settings" class="start-btn secondary">⚙️ 设置</button>
+      </div>
+      <div class="start-footer">
+        <p>v1.0.0 | 按任意键开始</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="game-container" class="hidden">
+    <!-- 战队构建 + 牌库预览（开局） -->
+    <div id="team-build-view" class="view pixel-panel">
+      <div class="combos-header">
+        <div class="combos-title pixel-title">⚔️ 战队构建</div>
+      </div>
+      <p class="team-build-hint">选择 1–3 个已解锁职业组成战队（点击切换选中）</p>
+      <div id="team-build-professions" class="team-build-prof-list"></div>
+      <div class="team-build-main">
+        <div class="team-build-deck-area">
+          <div class="combos-header" style="margin-top: 12px;">
+            <span class="combos-title pixel-title" style="font-size: 14px;">🃏 牌库预览</span>
+          </div>
+          <div id="team-build-deck-preview" class="team-build-deck-grid"></div>
+        </div>
+        <div id="team-build-detail" class="team-build-detail-panel">
+          <div id="team-build-detail-placeholder" class="team-build-detail-placeholder">点击左侧卡牌查看效果</div>
+          <div id="team-build-detail-content" class="team-build-detail-content hidden">
+            <div id="team-build-detail-icon" class="team-build-detail-icon"></div>
+            <div id="team-build-detail-name" class="team-build-detail-name"></div>
+            <div id="team-build-detail-desc" class="team-build-detail-desc"></div>
+            <div id="team-build-detail-effect" class="team-build-detail-effect"></div>
+          </div>
+        </div>
+      </div>
+      <div class="reward-actions" style="margin-top: 16px;">
+        <button id="team-build-start" class="action-btn">开始冒险</button>
+      </div>
+    </div>
+
+    <!-- 顶部状态栏 -->
+    <div id="top-status-bar">
+      <div class="status-item">
+        <span class="status-icon">💰</span>
+        <span class="status-value" id="gold-display">0</span>
+      </div>
+      <div class="status-item">
+        <span class="status-icon">🏛️</span>
+        <span class="status-value" id="floor-display">第 1 层</span>
+      </div>
+      <div class="status-item clickable" id="combos-btn">
+        <span class="status-icon">🌟</span>
+        <span class="status-value">组合技</span>
+      </div>
+      <div class="status-item clickable" id="deck-btn">
+        <span class="status-icon">🃏</span>
+        <span class="status-value">牌库</span>
+      </div>
+      <div class="status-item clickable" id="save-btn" title="保存进度">
+        <span class="status-icon">💾</span>
+        <span class="status-value">存档</span>
+      </div>
+      <div class="status-item clickable" id="music-btn">
+        <span class="status-icon">🎵</span>
+        <span class="status-value">音乐</span>
+      </div>
+    </div>
+
+    <!-- 地图视图 -->
+    <div id="map-view" class="view hidden pixel-panel">
+      <div class="map-header">
+        <div class="map-title pixel-title">🗺️ 城市探索</div>
+        <div class="map-floor-info">
+          <span class="map-floor-name" id="floor-name">街头巷尾</span>
+          <span class="map-floor-number" id="floor-number">第 1 层 / 共 5 层</span>
+        </div>
+      </div>
+      <div id="map-container"></div>
+      <div class="map-legend">
+        <span class="legend-item"><span class="legend-dot battle"></span>战斗</span>
+        <span class="legend-item"><span class="legend-dot elite"></span>精英</span>
+        <span class="legend-item"><span class="legend-dot event"></span>事件</span>
+        <span class="legend-item"><span class="legend-dot shop"></span>商店</span>
+        <span class="legend-item"><span class="legend-dot boss"></span>Boss</span>
+      </div>
+    </div>
+
+    <!-- 商店视图 -->
+    <div id="shop-view" class="view hidden pixel-panel">
+      <div class="shop-header">
+        <div class="shop-title pixel-title">🏪 商店</div>
+        <div class="shop-gold">
+          <span>💰</span>
+          <span id="shop-gold-display">0</span>
+        </div>
+      </div>
+      <div class="shop-sections">
+        <div class="shop-section">
+          <div class="shop-section-title">购买卡牌</div>
+          <div id="shop-cards" class="shop-items"></div>
+        </div>
+        <div class="shop-section">
+          <div class="shop-section-title">升级卡牌 (50金)</div>
+          <div id="shop-upgrade" class="shop-items"></div>
+        </div>
+        <div class="shop-section">
+          <div class="shop-section-title">道具</div>
+          <div id="shop-items" class="shop-items"></div>
+        </div>
+        <div class="shop-section">
+          <div class="shop-section-title">出售卡牌</div>
+          <div id="shop-sell" class="shop-items"></div>
+        </div>
+      </div>
+      <div class="shop-actions">
+        <button id="shop-refresh" class="secondary-btn">刷新 (30金)</button>
+        <button id="shop-leave" class="action-btn">离开</button>
+      </div>
+      <div id="shop-tooltip" class="shop-tooltip-popup hidden"></div>
+    </div>
+
+    <!-- 事件视图 -->
+    <div id="event-view" class="view hidden pixel-panel">
+      <div class="event-container">
+        <div class="event-icon" id="event-icon">❓</div>
+        <div class="event-title" id="event-title">神秘事件</div>
+        <div class="event-description" id="event-description">你遇到了一个神秘的事件...</div>
+        <div class="event-effect" id="event-effect"></div>
+        <div class="event-actions">
+          <button id="event-confirm" class="action-btn">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 战斗奖励视图 -->
+    <div id="reward-view" class="view hidden pixel-panel">
+      <div class="combos-header">
+        <div class="combos-title pixel-title">🎁 战斗奖励</div>
+      </div>
+      <div id="reward-content">
+        <div id="reward-gold" class="reward-line"></div>
+        <div id="reward-card-section" class="reward-section">
+          <div id="reward-card-info" class="reward-reward-block">
+            <div class="reward-reward-name"></div>
+            <div class="reward-reward-desc"></div>
+            <div class="reward-reward-effect"></div>
+          </div>
+          <div class="reward-actions">
+            <button id="reward-card-take" class="action-btn">加入牌库</button>
+            <button id="reward-card-skip" class="secondary-btn">丢弃</button>
+          </div>
+        </div>
+        <div id="reward-item-section" class="reward-section hidden">
+          <div id="reward-item-info" class="reward-reward-block">
+            <div class="reward-reward-name"></div>
+            <div class="reward-reward-desc"></div>
+            <div class="reward-reward-effect"></div>
+          </div>
+          <div class="reward-actions" id="reward-item-actions">
+            <button id="reward-item-take" class="action-btn">获取</button>
+            <button id="reward-item-replace" class="secondary-btn">替换已有道具</button>
+            <button id="reward-item-skip" class="secondary-btn">丢弃</button>
+          </div>
+          <div id="reward-item-replace-slots" class="reward-actions hidden" style="margin-top: 8px;">
+            <button data-slot="0" class="secondary-btn">替换槽位1</button>
+            <button data-slot="1" class="secondary-btn">替换槽位2</button>
+            <button data-slot="2" class="secondary-btn">替换槽位3</button>
+            <button data-slot="3" class="secondary-btn">替换槽位4</button>
+          </div>
+        </div>
+        <div class="reward-actions" style="margin-top: 20px;">
+          <button id="reward-continue" class="action-btn">继续</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 牌型 / 伤害规则 视图（基础规则 + 隐藏组合在最后） -->
+    <div id="combos-view" class="view hidden pixel-panel">
+      <div class="combos-header">
+        <div class="combos-title pixel-title">📋 牌型 / 伤害规则</div>
+        <button id="combos-close" class="secondary-btn">返回</button>
+      </div>
+      <div id="rules-base-section" class="rules-section">
+        <div class="rules-section-title">基础牌型</div>
+        <div id="rules-base-list" class="rules-list"></div>
+      </div>
+      <div id="rules-code-section" class="rules-section">
+        <div class="rules-section-title">程序员代码牌</div>
+        <div id="rules-code-text" class="rules-code-text"></div>
+      </div>
+      <div id="rules-shield-section" class="rules-section">
+        <div class="rules-section-title">护盾与持续伤害</div>
+        <div id="rules-shield-text" class="rules-code-text"></div>
+      </div>
+      <div id="rules-combos-section" class="rules-section">
+        <div class="rules-section-title">隐藏组合（已发现）</div>
+        <div id="combos-list" class="combos-list"></div>
+        <div id="combos-empty" class="combos-empty">
+          还没有发现任何隐藏组合，继续探索吧！
+        </div>
+      </div>
+    </div>
+
+    <!-- 牌库构成查看（与战队选择同款：职业展示 + 网格 + 右侧详情） -->
+    <div id="deck-view" class="view hidden pixel-panel">
+      <div class="combos-header">
+        <div class="combos-title pixel-title">🃏 牌库构成</div>
+        <button id="deck-close" class="secondary-btn">关闭</button>
+      </div>
+      <p class="team-build-hint">当前职业组合</p>
+      <div id="deck-current-professions" class="team-build-prof-list"></div>
+      <div class="team-build-main">
+        <div class="team-build-deck-area">
+          <div class="combos-header" style="margin-top: 12px;">
+            <span class="combos-title pixel-title" style="font-size: 14px;">按职业排序</span>
+          </div>
+          <div id="deck-list" class="team-build-deck-grid"></div>
+        </div>
+        <div id="deck-detail" class="team-build-detail-panel">
+          <div id="deck-detail-placeholder" class="team-build-detail-placeholder">点击左侧卡牌查看效果</div>
+          <div id="deck-detail-content" class="team-build-detail-content hidden">
+            <div id="deck-detail-icon" class="team-build-detail-icon"></div>
+            <div id="deck-detail-name" class="team-build-detail-name"></div>
+            <div id="deck-detail-desc" class="team-build-detail-desc"></div>
+            <div id="deck-detail-effect" class="team-build-detail-effect"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 战斗视图 -->
+    <div id="battle-view" class="view">
+      <div id="battle-layout">
+        <!-- 左侧：比赛信息 + 伤害框 -->
+        <div id="battle-sidebar" class="pixel-panel">
+          <div class="battle-sidebar-title">📊 比赛信息</div>
+          <div class="battle-sidebar-row">
+            <span class="label">当前层数</span>
+            <span class="value" id="battle-floor-display">第 1 层</span>
+          </div>
+          <div class="battle-sidebar-row">
+            <span class="label">金币</span>
+            <span class="value" id="battle-gold-display">0</span>
+          </div>
+          <div class="battle-sidebar-row">
+            <span class="label">当前回合</span>
+            <span class="value" id="battle-round">1</span>
+          </div>
+          <div class="battle-sidebar-divider"></div>
+          <div class="battle-sidebar-damage damage-formula-box" id="battle-sidebar-damage-box" title="悬停查看计算说明">
+            <span class="label" id="turn-damage-label">预计伤害</span>
+            <span class="combo-damage damage-formula" id="turn-damage">0 × 1.0 = 0</span>
+          </div>
+          <div id="damage-breakdown-tooltip" class="damage-breakdown-tooltip hidden"></div>
+                  <div class="battle-sidebar-row">
+            <span class="label">出牌区</span>
+            <span class="value" id="battle-played-count">0 / 5</span>
+          </div>
+          <div class="battle-sidebar-divider"></div>
+          <button id="battle-rules-btn" class="secondary-btn battle-rules-btn">牌型 / 伤害规则</button>
+        </div>
+
+        <!-- 右侧：原有战斗区域 -->
+        <div id="battle-main">
+          <!-- 顶部角色 VS 敌人 -->
+          <div id="battle-header">
+            <!-- 我方队伍（动态生成） -->
+            <div id="teammate-section"></div>
+
+            <!-- 敌人区域（右侧） -->
+            <div id="enemy-section" class="pixel-panel">
+              <div class="enemy-info">
+                <span class="enemy-name" id="enemy-name">街头混混</span>
+                <span class="enemy-layer" id="enemy-layer">第 1 层</span>
+              </div>
+              <div class="enemy-hp-bar">
+                <div id="enemy-hp-fill" class="hp-fill"></div>
+              </div>
+              <div class="enemy-hp-text">
+                <span id="enemy-hp-current">60</span> / <span id="enemy-hp-max">60</span>
+              </div>
+              <div class="enemy-debuffs" id="enemy-debuffs"></div>
+              <div class="enemy-intent" id="enemy-intent">
+                ⚔️ 下回合：攻击 (8 伤害)
+              </div>
+            </div>
+          </div>
+
+          <!-- 出牌区（本回合打出的牌，最多5张，结束回合时结算） -->
+                  <div id="played-area-wrap" class="pixel-panel">
+                    <div class="section-label">本回合出牌（基础最多 5 张，道具可提高）</div>
+            <div id="item-section" class="hand-items-row">
+              <span class="section-label-inline">道具</span>
+              <div class="item-slots">
+                <div class="item-slot" id="item-0"></div>
+                <div class="item-slot" id="item-1"></div>
+                <div class="item-slot" id="item-2"></div>
+                <div class="item-slot" id="item-3"></div>
+              </div>
+              <div id="item-tooltip" class="item-tooltip hidden"></div>
+            </div>
+            <div id="played-container" class="played-container"></div>
+          </div>
+
+          <!-- 手牌区域 -->
+          <div id="hand-row">
+            <div id="hand-section" class="pixel-panel">
+              <div class="hand-label">手牌</div>
+              <div id="hand-container"></div>
+            </div>
+          </div>
+
+          <!-- 牌库 / 弃牌信息 -->
+          <div id="pile-info">
+            <div class="pile-item">
+              <span class="label">牌库</span>
+              <span class="value" id="deck-count">0</span>
+            </div>
+            <div class="pile-item">
+              <span class="label">弃牌堆</span>
+              <span class="value clickable" id="discard-count">0</span>
+            </div>
+          </div>
+
+          <!-- 控制按钮 -->
+                  <div id="control-section">
+                    <button id="auto-fill-btn" class="secondary-btn" title="自动选出并打出当前伤害最高的一组牌（快捷键：Q 仅选牌）">自动出牌</button>
+            <button id="play-cards-btn" class="secondary-btn">出牌</button>
+            <button id="reset-btn" class="secondary-btn">换牌</button>
+            <button id="end-turn-btn" class="action-btn">结束回合</button>
+          </div>
+
+          <!-- 底部：战斗日志 + 弃牌查看 -->
+          <div id="bottom-row">
+            <div id="log-section" class="pixel-panel">
+              <div class="section-label">战斗日志</div>
+              <div id="battle-log"></div>
+            </div>
+
+            <div id="discard-panel" class="pixel-panel">
+              <div class="section-label clickable" id="discard-toggle">查看弃牌堆 ▼</div>
+              <div id="discard-list" class="hidden"></div>
+            </div>
+          </div>
+
+          <!-- 伤害动画层 -->
+          <div id="damage-overlay" class="hidden"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 成就弹窗 -->
+  <div id="achievement-overlay" class="achievement-overlay"></div>
+
+  <!-- 设置弹窗 -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>⚙️ 设置</h2>
+      <div class="settings-item">
+        <label>🎵 背景音乐</label>
+        <input type="range" id="music-volume" min="0" max="100" value="30">
+      </div>
+      <div class="settings-item">
+        <label>🔊 音效</label>
+        <input type="range" id="sfx-volume" min="0" max="100" value="50">
+      </div>
+      <div class="settings-item">
+        <label>🎨 像素风UI</label>
+        <input type="checkbox" id="pixel-mode-toggle" checked>
+      </div>
+      <button id="settings-close" class="action-btn">关闭</button>
+    </div>
+  </div>
+
+  <!-- 存档弹窗（3个存档位：存/读） -->
+  <div id="save-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>💾 存档</h2>
+      <div id="save-modal-mode" style="text-align:center;color:#aaa;margin-bottom:14px;">选择存档位</div>
+      <div id="save-slots" class="save-slots">
+        <button class="secondary-btn save-slot-btn" data-slot="1">
+          <div class="save-slot-title">存档位 1</div>
+          <div class="save-slot-time" id="save-slot-time-1">空</div>
+        </button>
+        <button class="secondary-btn save-slot-btn" data-slot="2">
+          <div class="save-slot-title">存档位 2</div>
+          <div class="save-slot-time" id="save-slot-time-2">空</div>
+        </button>
+        <button class="secondary-btn save-slot-btn" data-slot="3">
+          <div class="save-slot-title">存档位 3</div>
+          <div class="save-slot-time" id="save-slot-time-3">空</div>
+        </button>
+      </div>
+      <div class="reward-actions" style="margin-top: 16px; justify-content: center;">
+        <button id="save-modal-close" class="secondary-btn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 成就弹窗 -->
+  <div id="achievements-modal" class="modal hidden">
+    <div class="modal-content achievements-content">
+      <h2>🏆 成就</h2>
+      <div id="achievements-list"></div>
+      <button id="achievements-close" class="action-btn">关闭</button>
+    </div>
+  </div>
+
+  <!-- 新手引导：聚焦高亮遮罩 -->
+  <div id="tutorial-overlay" class="tutorial-overlay hidden" aria-hidden="true">
+    <div class="tutorial-mask"></div>
+    <div class="tutorial-box">
+      <div class="tutorial-title" id="tutorial-title">新手引导</div>
+      <div class="tutorial-text" id="tutorial-text"></div>
+      <div class="tutorial-actions">
+        <button id="tutorial-skip" class="secondary-btn">跳过教学</button>
+        <button id="tutorial-next" class="action-btn">下一步</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/cards.js"></script>
+  <script src="js/items.js"></script>
+  <script src="js/combat-rules.js"></script>
+  <script src="js/effects.js"></script>
+  <script src="js/pixel-chars.js"></script>
+  <script src="js/battle.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

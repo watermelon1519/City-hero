@@ -1,0 +1,259 @@
+/* ===== 像素风UI样式 ===== */
+/* 在 style.css 后面引入 */
+
+/* 导入像素字体 */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+/* 全局像素风设置 */
+.pixel-mode * {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 像素风按钮覆盖 */
+.pixel-mode .action-btn,
+.pixel-mode .secondary-btn {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 11px !important;
+  border-radius: 0 !important;
+  border: 4px solid !important;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.8);
+  position: relative;
+}
+
+.pixel-mode .action-btn {
+  background: linear-gradient(180deg, #38b764 0%, #257953 50%, #1a5a3a 100%) !important;
+  border-color: #5ada8a #1a5a3a #1a5a3a #5ada8a !important;
+  box-shadow: 
+    inset -4px -4px 0 0 rgba(0,0,0,0.3),
+    inset 4px 4px 0 0 rgba(255,255,255,0.15),
+    6px 6px 0 0 rgba(0,0,0,0.4) !important;
+}
+
+.pixel-mode .action-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 
+    inset -4px -4px 0 0 rgba(0,0,0,0.3),
+    inset 4px 4px 0 0 rgba(255,255,255,0.15),
+    8px 8px 0 0 rgba(0,0,0,0.4) !important;
+}
+
+.pixel-mode .action-btn:active {
+  transform: translate(2px, 2px) !important;
+  box-shadow: 
+    inset 4px 4px 0 0 rgba(0,0,0,0.4),
+    inset -4px -4px 0 0 rgba(255,255,255,0.1),
+    2px 2px 0 0 rgba(0,0,0,0.3) !important;
+}
+
+.pixel-mode .secondary-btn {
+  background: linear-gradient(180deg, #5a6a8a 0%, #3a4a6a 50%, #2a3a5a 100%) !important;
+  border-color: #7a8aaa #2a3a5a #2a3a5a #7a8aaa !important;
+}
+
+/* 像素风面板 */
+.pixel-mode #battle-view,
+.pixel-mode #map-view,
+.pixel-mode #shop-view,
+.pixel-mode #event-view,
+.pixel-mode #combos-view {
+  background: linear-gradient(180deg, #1a2a3a 0%, #0a1a2a 100%) !important;
+  border: 4px solid !important;
+  border-color: #3a4a5a #0a1a2a #0a1a2a #3a4a5a !important;
+  border-radius: 0 !important;
+}
+
+/* 像素风卡牌 */
+.pixel-mode .card {
+  font-family: 'Press Start 2P', monospace !important;
+  border-radius: 0 !important;
+  border: 4px solid !important;
+  font-size: 10px !important;
+  box-shadow: 
+    inset -3px -3px 0 0 rgba(0,0,0,0.3),
+    inset 3px 3px 0 0 rgba(255,255,255,0.1),
+    5px 5px 0 0 rgba(0,0,0,0.4) !important;
+}
+
+.pixel-mode .card .card-name {
+  font-size: 9px !important;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.8);
+}
+
+.pixel-mode .card .card-cost {
+  font-size: 14px !important;
+  font-weight: normal !important;
+}
+
+/* 像素风敌人区域 */
+.pixel-mode #enemy-section {
+  background: linear-gradient(180deg, #3a1a1a 0%, #2a0a0a 100%) !important;
+  border: 4px solid !important;
+  border-color: #5a3a3a #1a0a0a #1a0a0a #5a3a3a !important;
+  border-radius: 0 !important;
+}
+
+.pixel-mode .enemy-name {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 14px !important;
+}
+
+/* 像素风队友槽位 */
+.pixel-mode .teammate-slot {
+  border-radius: 0 !important;
+  border: 4px solid !important;
+  border-color: #2a4a2a #0a2a0a #0a2a0a #2a4a2a !important;
+  background: linear-gradient(180deg, #1a3a1a 0%, #0a2a0a 100%) !important;
+}
+
+/* 像素风血条 */
+.pixel-mode .hp-fill {
+  border-radius: 0 !important;
+  background: linear-gradient(180deg, #38b764 0%, #257953 50%, #1a5a3a 100%) !important;
+  box-shadow: inset -2px -2px 0 0 rgba(0,0,0,0.3), inset 2px 2px 0 0 rgba(255,255,255,0.15) !important;
+}
+
+.pixel-mode .hp-fill.enemy-hp {
+  background: linear-gradient(180deg, #c84b4b 0%, #a33a3a 50%, #8a2a2a 100%) !important;
+}
+
+/* 像素风日志 */
+.pixel-mode #battle-log {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 9px !important;
+  line-height: 1.8 !important;
+}
+
+.pixel-mode .log-entry {
+  padding: 4px 8px !important;
+  margin: 2px 0 !important;
+  border-radius: 0 !important;
+}
+
+/* 像素风地图节点 */
+.pixel-mode .map-node {
+  border-radius: 0 !important;
+  border: 4px solid !important;
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 10px !important;
+  box-shadow: 
+    inset -3px -3px 0 0 rgba(0,0,0,0.3),
+    inset 3px 3px 0 0 rgba(255,255,255,0.1),
+    4px 4px 0 0 rgba(0,0,0,0.4) !important;
+}
+
+.pixel-mode .map-node.current {
+  animation: pixel-pulse 1s infinite !important;
+}
+
+@keyframes pixel-pulse {
+  0%, 100% { 
+    box-shadow: 
+      inset -3px -3px 0 0 rgba(0,0,0,0.3),
+      inset 3px 3px 0 0 rgba(255,255,255,0.1),
+      4px 4px 0 0 rgba(0,0,0,0.4),
+      0 0 10px rgba(255, 215, 0, 0.5);
+  }
+  50% { 
+    box-shadow: 
+      inset -3px -3px 0 0 rgba(0,0,0,0.3),
+      inset 3px 3px 0 0 rgba(255,255,255,0.1),
+      4px 4px 0 0 rgba(0,0,0,0.4),
+      0 0 20px rgba(255, 215, 0, 0.8);
+  }
+}
+
+/* 像素风商店物品 */
+.pixel-mode .shop-item {
+  border-radius: 0 !important;
+  border: 3px solid !important;
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 9px !important;
+}
+
+/* 像素风状态栏 */
+.pixel-mode #top-status-bar {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 10px !important;
+  border-radius: 0 !important;
+  border: 3px solid !important;
+  border-color: #3a4a5a #1a2a3a #1a2a3a #3a4a5a !important;
+}
+
+.pixel-mode .status-value {
+  font-family: 'Press Start 2P', monospace !important;
+}
+
+/* 像素风组合显示 */
+.pixel-mode .combo-panel .combo-value,
+.pixel-mode .damage-display .value {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 20px !important;
+  text-shadow: 3px 3px 0 rgba(0,0,0,0.8);
+}
+
+/* 像素风标题 */
+.pixel-mode .map-title,
+.pixel-mode .shop-title,
+.pixel-mode .event-title,
+.pixel-mode .combos-title {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 16px !important;
+  text-shadow: 3px 3px 0 rgba(0,0,0,0.8);
+}
+
+/* 像素风成就弹窗 */
+.pixel-mode .achievement-content {
+  border-radius: 0 !important;
+  border: 6px solid !important;
+  border-color: #ffd700 #8a6a00 #8a6a00 #ffd700 !important;
+  font-family: 'Press Start 2P', monospace !important;
+}
+
+.pixel-mode .achievement-icon {
+  font-size: 48px !important;
+}
+
+.pixel-mode .achievement-name {
+  font-size: 14px !important;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.8);
+}
+
+/* 像素风伤害数字 */
+.pixel-mode .damage-number {
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 24px !important;
+  text-shadow: 3px 3px 0 rgba(0,0,0,0.8);
+}
+
+/* 像素风道具槽 */
+.pixel-mode .item-slot {
+  border-radius: 0 !important;
+  border: 3px solid !important;
+  border-color: #4a5a6a #2a3a4a #2a3a4a #4a5a6a !important;
+}
+
+.pixel-mode .item-slot.has-item {
+  background: linear-gradient(180deg, #3a4a5a 0%, #2a3a4a 100%) !important;
+}
+
+/* 像素风卡牌详情提示 */
+.pixel-mode .card-tooltip {
+  border-radius: 0 !important;
+  border: 4px solid !important;
+  border-color: #4ecca3 #1a5a3a #1a5a3a #4ecca3 !important;
+  font-family: 'Press Start 2P', monospace !important;
+  font-size: 10px !important;
+}
+
+.pixel-mode .tooltip-name {
+  font-size: 12px !important;
+}
+
+.pixel-mode .tooltip-combo-title {
+  font-size: 10px !important;
+}
+
+.pixel-mode .tooltip-combo-item {
+  font-size: 9px !important;
+}
