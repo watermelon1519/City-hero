@@ -497,6 +497,20 @@ class Game {
   init() {
     // 绑定开始页面按钮
     this.bindStartScreenEvents();
+
+    // 响应式：窗口尺寸变化时同步移动端战斗头部
+    try {
+      if (!window.__mobileHeaderSyncBound) {
+        window.__mobileHeaderSyncBound = true;
+        window.addEventListener("resize", () => {
+          try {
+            if (window.gameInstance && typeof window.gameInstance.syncMobileBattleHeader === "function") {
+              window.gameInstance.syncMobileBattleHeader();
+            }
+          } catch (_) {}
+        });
+      }
+    } catch (_) {}
   }
 
   // 绑定开始页面事件
@@ -1573,6 +1587,36 @@ class Game {
     if (combosView) combosView.classList.add("hidden");
     if (deckView) deckView.classList.add("hidden");
 
+    // 移动端：调整战斗头部布局顺序（敌人 → 预计伤害 → 队友）
+    try {
+      this.syncMobileBattleHeader();
+    } catch (_) {}
+  }
+
+  syncMobileBattleHeader() {
+    const isMobile = window.matchMedia && window.matchMedia("(max-width: 600px)").matches;
+    const header = document.getElementById("battle-header");
+    const enemy = document.getElementById("enemy-section");
+    const teammate = document.getElementById("teammate-section");
+    const slot = document.getElementById("mobile-damage-slot");
+    const dmg = document.getElementById("battle-sidebar-damage-box");
+    const sidebar = document.getElementById("battle-sidebar");
+    if (!header || !enemy || !teammate || !slot || !dmg) return;
+
+    if (isMobile) {
+      slot.classList.remove("hidden");
+      // 头部顺序：敌人 → 伤害 → 队友
+      if (enemy.parentElement === header) header.appendChild(enemy); // 先放到末尾再重排
+      if (slot.parentElement === header) header.appendChild(slot);
+      if (teammate.parentElement === header) header.appendChild(teammate);
+
+      // 把伤害框挪到 slot 中（只挪 dom，不复制）
+      if (dmg.parentElement !== slot) slot.appendChild(dmg);
+    } else {
+      // 桌面端：伤害框回到侧栏
+      slot.classList.add("hidden");
+      if (sidebar && dmg.parentElement !== sidebar) sidebar.insertBefore(dmg, sidebar.querySelector("#damage-breakdown-tooltip") || null);
+    }
   }
 
   renderMap() {
@@ -1786,7 +1830,20 @@ class Game {
         });
       }
       if (event.effect.damage) {
-        this.takeDamage(event.effect.damage);
+        // 事件伤害：走更稳的队友伤害逻辑，避免因队友数据缺失导致直接判死
+        const professions = Array.isArray(this.selectedProfessions) && this.selectedProfessions.length
+          ? this.selectedProfessions
+          : (this.teammates ? Object.keys(this.teammates) : []);
+        const alive = professions.filter((p) => {
+          const t = this.teammates && this.teammates[p];
+          return t && typeof t.hp === "number" && t.hp > 0;
+        });
+        if (alive.length && typeof this.applyDamageToTeammate === "function") {
+          const target = alive[Math.floor(Math.random() * alive.length)];
+          this.applyDamageToTeammate(target, event.effect.damage);
+        } else {
+          this.takeDamage(event.effect.damage);
+        }
       }
       if (event.effect.addCard) {
         // 随机添加一张卡牌
@@ -2913,6 +2970,12 @@ class Game {
       card.addEventListener("click", () => {
         card.classList.toggle("selected-discard");
         this.updateEstimatedDamage();
+        // 扑克牌叠放时：选中牌滚动到完全可见
+        try {
+          if (window.matchMedia && window.matchMedia("(max-width: 600px)").matches) {
+            card.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+          }
+        } catch (_) {}
       });
 
       // 双击：直接打出到出牌区（更流畅）
@@ -3416,17 +3479,20 @@ class Game {
 
   // 队伍受到伤害
   takeDamage(damage) {
-    // 使用当前选择的职业列表
-    const professions = this.selectedProfessions || ["warrior", "mage", "ranger"];
+    // 使用当前选择的职业列表；若异常则回退到已初始化的队友键
+    const professions =
+      (Array.isArray(this.selectedProfessions) && this.selectedProfessions.length ? this.selectedProfessions : null) ||
+      (this.teammates ? Object.keys(this.teammates) : []);
+
     // 随机选择一个存活的队友
-    const aliveProfessions = professions.filter(p => {
-      const t = this.teammates[p];
-      return t && t.hp > 0;
+    const aliveProfessions = professions.filter((p) => {
+      const t = this.teammates && this.teammates[p];
+      return t && typeof t.hp === "number" && t.hp > 0;
     });
     
     if (aliveProfessions.length === 0) {
-      this.log("所有队友已阵亡！", "enemy");
-      this.gameOver();
+      // 防御性处理：若队友数据缺失，不要因为一次事件伤害直接判死
+      this.log("未找到可受伤的队友（数据缺失），已忽略本次伤害。", "system");
       return;
     }
     
@@ -3461,13 +3527,11 @@ class Game {
     }
     
     // 检查是否全灭
-    const stillAlive = professions.filter(p => {
-      const teammate = this.teammates[p];
-      return teammate && teammate.hp > 0;
+    const stillAlive = professions.filter((p) => {
+      const teammate = this.teammates && this.teammates[p];
+      return teammate && typeof teammate.hp === "number" && teammate.hp > 0;
     });
-    if (stillAlive.length === 0) {
-      this.gameOver();
-    }
+    if (stillAlive.length === 0) this.gameOver();
   }
 
   // 游戏结束（立即标记并弹窗，战斗侧会据此停止回合循环）
@@ -3959,4 +4023,5 @@ class Game {
 let game;
 document.addEventListener("DOMContentLoaded", () => {
   game = new Game();
+  try { window.gameInstance = game; } catch (_) {}
 });

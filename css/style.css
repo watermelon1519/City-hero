@@ -2689,7 +2689,27 @@ body {
   transform: scale(1.1);
 }
 
-/* 响应式 */
+/* ===== 响应式：中等屏幕（平板 / 小窗口） ===== */
+@media (max-width: 900px) {
+  #battle-layout {
+    gap: 10px;
+  }
+
+  #battle-sidebar {
+    width: 210px;
+  }
+
+  #battle-header {
+    gap: 8px;
+  }
+
+  .card {
+    width: 78px;
+    height: 112px;
+  }
+}
+
+/* ===== 响应式：小屏（手机） ===== */
 @media (max-width: 600px) {
   /* ===== 移动端：战斗页改为单列，避免横向溢出 ===== */
   #battle-layout {
@@ -2697,24 +2717,71 @@ body {
     gap: 8px;
   }
 
+  /* 顶部对战信息：改为上下堆叠，避免左右挤压 */
+  #battle-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #enemy-section {
+    max-width: none;
+  }
+
+  /* 移动端：敌人 → 伤害 → 队友 */
+  #enemy-section { order: 1; }
+  #mobile-damage-slot { order: 2; }
+  #teammate-section { order: 3; }
+  #mobile-damage-slot.hidden { display: none !important; }
+  #mobile-damage-slot .battle-sidebar-damage {
+    margin: 0;
+  }
+
+  /* 队友区再压扁一点 */
+  .teammate-slot {
+    width: 92px;
+    padding: 6px;
+  }
+
+  /* 队友区：改成横向滚动条，避免被挤成一列 */
+  #teammate-section {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 10px 10px;
+  }
+  #teammate-section::-webkit-scrollbar { height: 6px; }
+  #teammate-section::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 8px; }
+  .teammate-slot {
+    flex: 0 0 auto;
+    width: 96px;
+    padding: 8px;
+  }
+
   #battle-sidebar {
     width: auto;
-    padding: 10px 10px;
+    padding: 8px 10px;
     gap: 6px;
   }
 
   .battle-sidebar-title {
-    font-size: 14px;
-    margin-bottom: 2px;
+    display: none;
   }
 
-  .battle-sidebar-row {
-    font-size: 12px;
-    padding: 3px 0;
+  /* 手机端：比赛信息只保留「预计伤害」 */
+  #battle-sidebar .battle-sidebar-row,
+  #battle-sidebar .battle-sidebar-divider,
+  #battle-sidebar #battle-rules-btn {
+    display: none !important;
   }
 
   #battle-sidebar .battle-sidebar-damage .combo-damage {
     font-size: 16px;
+  }
+
+  #battle-sidebar .battle-sidebar-damage {
+    margin: 0;
   }
 
   /* 顶部状态栏更紧凑 */
@@ -2744,6 +2811,11 @@ body {
     flex-wrap: wrap;
     gap: 8px;
     margin: 4px 0 6px;
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: rgba(5, 10, 30, 0.9);
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .action-btn,
   .secondary-btn {
@@ -2756,25 +2828,123 @@ body {
     height: 86px;
   }
 
+  /* 卡牌整体再缩小一档（避免两行） */
   .card {
-    width: 70px;
-    height: 100px;
+    width: 64px;
+    height: 92px;
   }
 
   .card-icon {
-    font-size: 24px;
+    font-size: 22px;
   }
 
   .card-name {
-    font-size: 10px;
+    font-size: 9px;
   }
 
+  /* 扑克牌叠放：手牌/出牌区横向叠放，选中抬起并完全显示 */
+  #hand-container,
+  .played-container {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 6px 8px;
+    scroll-snap-type: x mandatory;
+  }
+  #hand-container .card,
+  .played-container .card {
+    flex: 0 0 auto;
+    scroll-snap-align: center;
+  }
+  #hand-container .card:not(:first-child),
+  .played-container .card:not(:first-child) {
+    margin-left: -26px; /* 叠放 */
+  }
+  #hand-container .card.selected-discard {
+    margin-left: 0;
+    transform: translateY(-10px) scale(1.02);
+    z-index: 10;
+  }
+  .played-container .card:hover {
+    transform: translateY(-8px);
+  }
+
+  /* 覆盖旧规则：移动端队友区保持横向滚动 */
   #teammate-section {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
   }
 
   .teammate-slot {
-    width: 80px;
-    margin: 5px;
+    width: 96px;
+    margin: 0;
+  }
+
+  /* ===== 移动端：商店纵向排布 ===== */
+  #shop-view {
+    padding: 12px 10px 16px;
+  }
+  .shop-header {
+    margin-bottom: 12px;
+  }
+  .shop-title {
+    font-size: 20px;
+  }
+  .shop-gold {
+    font-size: 16px;
+  }
+  .shop-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .shop-section {
+    padding: 10px 10px 12px;
+  }
+  .shop-section-title {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+  .shop-items {
+    gap: 8px;
+  }
+
+  /* ===== 移动端：战队构建布局（上1/3详情，下卡组列表） ===== */
+  #team-build-view {
+    padding: 14px 12px;
+  }
+  .team-build-main {
+    flex-direction: column-reverse; /* 让详情面板在上 */
+    gap: 10px;
+    min-height: 0;
+  }
+  .team-build-detail-panel {
+    width: 100%;
+    min-height: 0;
+    height: min(32vh, 260px);
+    padding: 12px;
+    overflow: hidden;
+  }
+  .team-build-detail-placeholder {
+    padding: 22px 10px;
+    font-size: 13px;
+  }
+  .team-build-detail-icon { font-size: 44px; margin-bottom: 8px; }
+  .team-build-detail-name { font-size: 15px; margin-bottom: 6px; }
+  .team-build-detail-desc { font-size: 12px; margin-bottom: 6px; }
+  .team-build-detail-effect {
+    font-size: 11px;
+    padding: 8px;
+    max-height: calc(min(32vh, 260px) - 110px);
+    overflow: auto;
+  }
+  .team-build-deck-grid {
+    max-height: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .team-build-card-item {
+    width: 84px;
+    padding: 8px;
   }
 }
