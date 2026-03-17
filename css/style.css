@@ -240,6 +240,49 @@ body {
   letter-spacing: 2px;
 }
 
+/* 开发者捷径（仅 ?dev=1 或 localStorage cityHeroDev=1） */
+.dev-shortcuts-panel {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px dashed rgba(233, 69, 96, 0.5);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+.dev-shortcuts-title {
+  font-size: 13px;
+  color: #e94560;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+.dev-shortcuts-hint {
+  font-size: 11px;
+  color: #6a6a8a;
+  margin: 0 0 10px 0;
+  line-height: 1.4;
+}
+.dev-shortcuts-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dev-sc-btn {
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #3a3a5a;
+  background: #252538;
+  color: #ccc;
+  cursor: pointer;
+}
+.dev-sc-btn:hover {
+  border-color: #e94560;
+  color: #fff;
+}
+
 /* 设置弹窗 */
 .modal {
   position: fixed;
@@ -581,18 +624,75 @@ body {
   position: fixed;
   inset: 0;
   z-index: 30000;
+  /* 关键：overlay 是全屏透明层，默认也会吃掉点击。
+     这里让它不接收指针事件，把交互交还给底层的高亮目标元素。 */
+  pointer-events: none;
+}
+/* 聚光灯暗角：每个洞中间透明，外侧用超大 spread 压暗 */
+.tutorial-dim-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  pointer-events: none;
+}
+.tutorial-spot-hole {
+  position: fixed;
+  pointer-events: none;
+  background: transparent;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.72);
+  border-radius: 12px;
+}
+.tutorial-highlight-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30001;
+  pointer-events: none;
+}
+.tutorial-highlight {
+  position: fixed;
+  border: 4px solid rgba(255,215,0,0.98);
+  box-shadow:
+    0 0 0 2px rgba(0,0,0,0.35),
+    0 0 32px rgba(255,215,0,0.65),
+    inset 0 0 24px rgba(255,255,200,0.15);
+  border-radius: 12px;
+  pointer-events: none;
 }
 .tutorial-mask {
   position: absolute;
   inset: 0;
   background: rgba(0,0,0,0.72);
+  /* 不拦截点击：由 JS 的 allowed/blocker 统一控制可交互目标，避免遮罩盖住导致“点不了” */
+  pointer-events: none;
 }
-/* 被聚焦的元素会被抬到遮罩之上 */
+/* 教学聚焦：本体大幅提亮（手牌多为深色底+暗色立绘，低了会像“暗暗的”） */
 .tutorial-spotlight {
   position: relative !important;
-  z-index: 30001 !important;
-  box-shadow: 0 0 0 4px rgba(255,215,0,0.9), 0 0 24px rgba(255,215,0,0.55);
+  z-index: 1;
+  filter: brightness(1.14) saturate(1.06) !important;
+  outline: 3px solid rgba(255,230,120,0.98) !important;
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 2px rgba(255,215,0,0.55),
+    0 0 36px rgba(255,215,0,0.85),
+    inset 0 0 36px rgba(255,252,220,0.38) !important;
   border-radius: 10px;
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
+}
+/* 手牌卡：必须明显亮于中间未聚焦的牌 */
+.tutorial-spotlight.card {
+  filter: brightness(1.62) saturate(1.28) contrast(1.08) !important;
+}
+.tutorial-spotlight.secondary-btn,
+.tutorial-spotlight.action-btn {
+  filter: brightness(1.38) saturate(1.15) contrast(1.05) !important;
+}
+.pixel-mode .tutorial-spotlight.card {
+  filter: brightness(1.68) saturate(1.25) contrast(1.06) !important;
+}
+.pixel-mode .tutorial-spotlight.secondary-btn,
+.pixel-mode .tutorial-spotlight.action-btn {
+  filter: brightness(1.42) saturate(1.12) !important;
 }
 .tutorial-box {
   position: absolute;
@@ -605,7 +705,9 @@ body {
   border-radius: 12px;
   padding: 16px 18px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.7);
-  z-index: 30002;
+  z-index: 30003;
+  /* 只允许教学框本身可点击 */
+  pointer-events: auto;
 }
 .tutorial-title {
   font-weight: 900;
@@ -793,6 +895,87 @@ body {
   pointer-events: none;
   opacity: 0.95;
   white-space: nowrap;
+}
+
+/* 第3关 Boss：永久裂地格（无回合倒数） */
+.played-slot.crack-perma {
+  border-color: rgba(120, 113, 108, 0.95) !important;
+  border-style: solid !important;
+  background:
+    linear-gradient(165deg, transparent 40%, rgba(41, 37, 36, 0.5) 40%),
+    linear-gradient(195deg, transparent 55%, rgba(28, 25, 23, 0.55) 55%),
+    radial-gradient(ellipse at 50% 100%, rgba(68, 64, 60, 0.45), transparent 65%),
+    rgba(28, 25, 23, 0.35) !important;
+  box-shadow: inset 0 -6px 14px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(87, 83, 78, 0.6);
+}
+.played-slot.crack-perma::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(72deg, transparent 48%, rgba(0, 0, 0, 0.35) 49%, transparent 50%),
+    linear-gradient(-18deg, transparent 62%, rgba(0, 0, 0, 0.28) 63%, transparent 64%),
+    linear-gradient(128deg, transparent 38%, rgba(68, 64, 60, 0.4) 39%, transparent 41%);
+  pointer-events: none;
+  animation: crackPermaShimmer 2.5s ease-in-out infinite;
+}
+@keyframes crackPermaShimmer {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.played-slot.crack-perma::after {
+  content: "🌋 塌陷";
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 900;
+  color: #d6d3d1;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+  letter-spacing: 0.05em;
+}
+.played-slot.crack-ground-hit {
+  animation: crackGroundHit 0.95s ease-out both;
+}
+@keyframes crackGroundHit {
+  0% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  35% {
+    filter: brightness(1.4) contrast(1.1);
+    transform: scale(1.06);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+
+.boss-crack-beam-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8500;
+}
+.boss-crack-beam-line {
+  position: fixed;
+  height: 5px;
+  background: linear-gradient(90deg, rgba(87, 83, 78, 0.95), rgba(168, 162, 158, 0.85), rgba(41, 37, 36, 0.4));
+  transform-origin: left center;
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(120, 113, 108, 0.7);
+  z-index: 8501;
+}
+.boss-crack-skill-overlay .skill-desc {
+  color: #d6d3d1;
 }
 
 /* Boss 点燃技能：红橙射线 */
@@ -1957,6 +2140,77 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.22);
   font-size: 11px;
   color: #e8f7ff;
+}
+
+/* Boss2 手牌毒：一眼可辨 */
+.card-hand-poisoned {
+  border-color: #4ade80 !important;
+  border-width: 3px !important;
+  box-shadow:
+    0 0 0 2px rgba(168, 85, 247, 0.85),
+    0 0 18px rgba(74, 222, 128, 0.45),
+    inset 0 0 20px rgba(168, 85, 247, 0.12) !important;
+  animation: card-hand-poison-pulse 2.2s ease-in-out infinite;
+}
+@keyframes card-hand-poison-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px rgba(168, 85, 247, 0.75),
+      0 0 14px rgba(74, 222, 128, 0.35),
+      inset 0 0 16px rgba(168, 85, 247, 0.1);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(192, 132, 252, 0.95),
+      0 0 22px rgba(74, 222, 128, 0.6),
+      inset 0 0 24px rgba(168, 85, 247, 0.18);
+  }
+}
+
+.hand-poison-badge {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  z-index: 3;
+  min-width: 28px;
+  padding: 3px 7px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #ecfccb;
+  background: linear-gradient(145deg, #14532d 0%, #166534 50%, #052e16 100%);
+  border: 2px solid #4ade80;
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.65);
+  line-height: 1.1;
+  text-shadow: 0 1px 2px #000;
+}
+
+.hand-poison-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  margin: 0 0 8px 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(20, 83, 45, 0.45), rgba(88, 28, 135, 0.35));
+  border: 1px solid rgba(74, 222, 128, 0.5);
+  font-size: 12px;
+  line-height: 1.45;
+  color: #d9f99d;
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.15);
+}
+.hand-poison-bar.hidden {
+  display: none !important;
+}
+.hand-poison-bar-icon {
+  flex-shrink: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  filter: drop-shadow(0 0 4px #4ade80);
+}
+.hand-poison-bar strong {
+  color: #fff;
 }
 
 .card-icon {

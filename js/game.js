@@ -58,7 +58,7 @@ class Game {
     // 成就列表（支持奖励：解锁职业/卡牌/道具）
     this.achievements = [
       { id: 'first_win', name: '初次胜利', desc: '完成第一场战斗', icon: '⚔️', unlocked: false },
-      { id: 'first_boss', name: 'Boss猎手', desc: '击败第一个Boss', icon: '👑', unlocked: false, reward: { type: "profession", id: "security" } },
+      { id: 'first_boss', name: 'Boss猎手', desc: '击败第2层Boss', icon: '👑', unlocked: false, reward: { type: "profession", id: "security" } },
       { id: 'combo_master', name: '组合大师', desc: '发现 10 种隐藏组合', icon: '🌟', unlocked: false, criteria: { stat: "combosDiscovered", gte: 10 }, reward: { type: "item", id: "hero_medal" } },
       { id: 'rich', name: '富翁', desc: '累计获得 500 金币', icon: '💰', unlocked: false, criteria: { stat: "goldEarned", gte: 500 }, reward: { type: "item", id: "coupon_book" } },
       { id: 'big_hit', name: '一拳超人', desc: '单回合造成 ≥150 伤害', icon: '💥', unlocked: false, criteria: { stat: "maxDamage", gte: 150 }, reward: { type: "card", id: "hooligan_uppercut" } },
@@ -135,6 +135,10 @@ class Game {
 
   getBrokenPlayedSlots() {
     const out = new Set();
+    (this._permaBrokenPlayedSlots || []).forEach((i) => {
+      const idx = Math.floor(i);
+      if (Number.isFinite(idx) && idx >= 0) out.add(idx);
+    });
     const arr = Array.isArray(this._brokenPlayedSlots) ? this._brokenPlayedSlots : [];
     for (const x of arr) {
       if (!x) continue;
@@ -143,6 +147,36 @@ class Game {
       if (Number.isFinite(idx) && idx >= 0 && Number.isFinite(turns) && turns > 0) out.add(idx);
     }
     return out;
+  }
+
+  /** 第3关 Boss：永久塌陷出牌格（本场战斗）；战后 onBattleResult 会清空 */
+  applyPermanentPlayedSlotCrack(count = 1) {
+    const n = Math.max(0, Math.floor(count || 0));
+    if (!n) return [];
+    if (!Array.isArray(this._permaBrokenPlayedSlots)) this._permaBrokenPlayedSlots = [];
+    const picked = [];
+    for (let k = 0; k < n; k++) {
+      const slots = this.getPlayedSlotCount();
+      const broken = this.getBrokenPlayedSlots();
+      const candidates = [];
+      for (let i = 0; i < slots; i++) {
+        if (!broken.has(i)) candidates.push(i);
+      }
+      if (!candidates.length) break;
+      const idx = candidates[Math.floor(Math.random() * candidates.length)];
+      this._permaBrokenPlayedSlots.push(idx);
+      picked.push(idx);
+    }
+    if (typeof this.updatePlayedCount === "function") this.updatePlayedCount();
+    return picked;
+  }
+
+  clearPlayedSlotBattleEffects() {
+    this._permaBrokenPlayedSlots = [];
+    this._brokenPlayedSlots = [];
+    try {
+      this.setPlayedAreaBurning(false);
+    } catch (_) {}
   }
 
   getBrokenPlayedSlotTurns() {
@@ -414,6 +448,20 @@ class Game {
           try { fn(); } catch (_) {}
         });
         state.cleanup = [];
+        try {
+          const ov = document.getElementById("tutorial-overlay");
+          if (ov) {
+            const m = ov.querySelector(".tutorial-mask");
+            if (m) {
+              m.style.opacity = "";
+              m.style.visibility = "";
+            }
+            const dim = ov.querySelector(".tutorial-dim-layer");
+            if (dim) dim.innerHTML = "";
+            const hi = ov.querySelector(".tutorial-highlight-layer");
+            if (hi) hi.innerHTML = "";
+          }
+        } catch (_) {}
       };
 
       const stop = () => {
@@ -446,9 +494,104 @@ class Game {
           }
           return [];
         })();
-        if (!targets || !targets.length) return;
+        // 某些环境下（首次加载/DOM 切换/渲染抖动），目标元素可能还没插入到页面。
+        // 若此时直接显示遮罩，会导致玩家“啥也点不了”。这里做一次轻量重试。
+        if (!targets || !targets.length) {
+          state._retryCount = (state._retryCount || 0) + 1;
+          if (state._retryCount <= 20) {
+            overlay.classList.add("hidden");
+            overlay.setAttribute("aria-hidden", "true");
+            setTimeout(() => showStep(i), 60);
+            return;
+          }
+          // 多次重试仍未找到，直接结束教学，避免卡死在遮罩层
+          return stop();
+        }
+        state._retryCount = 0;
         state.spotlightEls = targets;
         targets.forEach((t) => t.classList.add("tutorial-spotlight"));
+
+        // 聚光灯：用 box-shadow 挖洞，目标区域不被压暗；黄框 + 目标本体提亮（.tutorial-spotlight）
+        try {
+          const maskEl = overlay.querySelector(".tutorial-mask");
+          const ensureDimLayer = () => {
+            let dim = overlay.querySelector(".tutorial-dim-layer");
+            if (!dim) {
+              dim = document.createElement("div");
+              dim.className = "tutorial-dim-layer";
+              const box = overlay.querySelector(".tutorial-box");
+              if (box) overlay.insertBefore(dim, box);
+              else overlay.appendChild(dim);
+            }
+            return dim;
+          };
+          const ensureHighlightLayer = () => {
+            let layer = overlay.querySelector(".tutorial-highlight-layer");
+            if (!layer) {
+              layer = document.createElement("div");
+              layer.className = "tutorial-highlight-layer";
+              const box = overlay.querySelector(".tutorial-box");
+              if (box) overlay.insertBefore(layer, box);
+              else overlay.appendChild(layer);
+            }
+            return layer;
+          };
+          const dimLayer = ensureDimLayer();
+          const layer = ensureHighlightLayer();
+
+          const drawHighlights = () => {
+            if (maskEl) {
+              maskEl.style.opacity = "0";
+              maskEl.style.visibility = "hidden";
+            }
+            if (dimLayer) {
+              dimLayer.innerHTML = "";
+              const els = targets.filter(Boolean);
+              els.forEach((el) => {
+                if (!el || !el.getBoundingClientRect) return;
+                const r = el.getBoundingClientRect();
+                const pad = 8;
+                const hole = document.createElement("div");
+                hole.className = "tutorial-spot-hole";
+                hole.style.left = `${Math.max(0, r.left - pad)}px`;
+                hole.style.top = `${Math.max(0, r.top - pad)}px`;
+                hole.style.width = `${Math.max(8, r.width + pad * 2)}px`;
+                hole.style.height = `${Math.max(8, r.height + pad * 2)}px`;
+                dimLayer.appendChild(hole);
+              });
+            }
+            if (layer) {
+              layer.innerHTML = "";
+              const els = targets.filter(Boolean);
+              els.forEach((el) => {
+                if (!el || !el.getBoundingClientRect) return;
+                const r = el.getBoundingClientRect();
+                const pad = 8;
+                const box = document.createElement("div");
+                box.className = "tutorial-highlight";
+                box.style.left = `${Math.max(0, r.left - pad)}px`;
+                box.style.top = `${Math.max(0, r.top - pad)}px`;
+                box.style.width = `${Math.max(8, r.width + pad * 2)}px`;
+                box.style.height = `${Math.max(8, r.height + pad * 2)}px`;
+                layer.appendChild(box);
+              });
+            }
+          };
+
+          drawHighlights();
+          const hiTimer = setInterval(drawHighlights, 150);
+          state.cleanup.push(() => clearInterval(hiTimer));
+          state.cleanup.push(() => {
+            try {
+              if (dimLayer) dimLayer.innerHTML = "";
+              if (layer) layer.innerHTML = "";
+              if (maskEl) {
+                maskEl.style.opacity = "";
+                maskEl.style.visibility = "";
+              }
+            } catch (_) {}
+          });
+        } catch (_) {}
 
         // 重新定位教学框：尽量不遮挡当前高亮目标
         try {
@@ -673,12 +816,125 @@ class Game {
     // 检查存档
     this.checkSaveData();
 
+    if (this.isDevShortcutsEnabled()) {
+      this.setupDevShortcutsUI();
+    }
+
     // 按任意键开始
     document.addEventListener('keydown', (e) => {
       if (!this.gameStarted && e.key !== 'Escape') {
         this.startNewGame();
       }
     });
+  }
+
+  /** 本地测试：URL 加 ?dev=1 或 localStorage.setItem('cityHeroDev','1') 后刷新 */
+  isDevShortcutsEnabled() {
+    try {
+      if (typeof location !== "undefined" && new URLSearchParams(location.search).get("dev") === "1") return true;
+      if (typeof localStorage !== "undefined" && localStorage.getItem("cityHeroDev") === "1") return true;
+    } catch (_) {}
+    return false;
+  }
+
+  setupDevShortcutsUI() {
+    const startContent = document.querySelector(".start-content");
+    if (!startContent || document.getElementById("dev-shortcuts-panel")) return;
+    const panel = document.createElement("div");
+    panel.id = "dev-shortcuts-panel";
+    panel.className = "dev-shortcuts-panel";
+    panel.innerHTML = `
+      <div class="dev-shortcuts-title">开发者捷径</div>
+      <p class="dev-shortcuts-hint">跳过教学/第一大关，直接测进度。线上勿带 ?dev=1</p>
+      <div class="dev-shortcuts-btns">
+        <button type="button" class="dev-sc-btn" data-cp="floor1_map">第1层地图</button>
+        <button type="button" class="dev-sc-btn" data-cp="post_floor1_team">通第1关后·组队</button>
+        <button type="button" class="dev-sc-btn" data-cp="floor2_map">第2层·已带狗</button>
+      </div>
+    `;
+    panel.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-cp]");
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.debugLoadCheckpoint(btn.dataset.cp);
+    });
+    startContent.appendChild(panel);
+  }
+
+  /**
+   * 测试用存档点（不写本地存档）
+   * floor1_map — 跳过假人，第1层新地图
+   * post_floor1_team — 模拟击败第1层Boss后：已解锁狗、第2层地图、打开组队
+   * floor2_map — 流氓+狗，第2层地图（测打完组队后进图）
+   */
+  debugLoadCheckpoint(checkpointId) {
+    const enter = () => {
+      document.getElementById("start-screen")?.classList.add("hidden");
+      document.getElementById("game-container")?.classList.remove("hidden");
+      this.gameStarted = true;
+      try {
+        if (window.audioManager) window.audioManager.init();
+      } catch (_) {}
+    };
+
+    this.difficulty = 1;
+    this.isFirstBattle = false;
+    this.tutorialBattleActive = false;
+    this.justFinishedFirstBattle = false;
+    this.pendingTeamBuildAfterBoss = false;
+    this.gold = 180;
+    this.items = [];
+    this.discoveredCombos = this.discoveredCombos || [];
+    this.cardLevels = this.cardLevels || {};
+
+    if (checkpointId === "floor1_map") {
+      this.unlockedProfessions = ["hooligan"];
+      this.selectedProfessions = ["hooligan"];
+      this.initGameData();
+      this.deck = this.createStarterDeck();
+      this.map.floor = 1;
+      this.map.generate();
+      this.currentNode = this.map.getNode(this.map.currentNodeId);
+      enter();
+      this.updateFloorDisplay();
+      this.showMapView();
+      this.log("[Dev] 检查点：第1层地图起点", "system");
+      return;
+    }
+
+    if (checkpointId === "post_floor1_team") {
+      this.unlockedProfessions = ["hooligan", "dog"];
+      this.selectedProfessions = ["hooligan"];
+      this.initGameData();
+      this.deck = this.createStarterDeck();
+      this.map.floor = 2;
+      this.map.generate();
+      this.currentNode = this.map.getNode(this.map.currentNodeId);
+      enter();
+      this.updateFloorDisplay();
+      this._flashUnlockedProfession = "dog";
+      this.showTeamBuildView();
+      this.log("[Dev] 检查点：通第1关后组队（狗已解锁）", "system");
+      return;
+    }
+
+    if (checkpointId === "floor2_map") {
+      this.unlockedProfessions = ["hooligan", "dog"];
+      this.selectedProfessions = ["hooligan", "dog"];
+      this.initGameData();
+      this.deck = this.createStarterDeck();
+      this.map.floor = 2;
+      this.map.generate();
+      this.currentNode = this.map.getNode(this.map.currentNodeId);
+      enter();
+      this.updateFloorDisplay();
+      this.showMapView();
+      this.log("[Dev] 检查点：第2层地图（流氓+狗）", "system");
+      return;
+    }
+
+    console.warn("[Dev] 未知检查点:", checkpointId, "可选: floor1_map, post_floor1_team, floor2_map");
   }
 
   openDifficultyModal() {
@@ -989,11 +1245,65 @@ class Game {
       this.showModal("提示", "请至少选择 1 个职业。");
       return;
     }
+    const prevProfs = [...(this.selectedProfessions || [])];
     this.selectedProfessions = [...this.teamBuildSelection];
     document.getElementById("team-build-view").classList.add("hidden");
-    this.initGameData();
-    this.deck = this.createStarterDeck();
-    this.startFirstBattle();
+    if (this.isFirstBattle) {
+      this.initGameData();
+      this.deck = this.createStarterDeck();
+      this.startFirstBattle();
+    } else {
+      // 大关后重新组队：回到地图继续冒险，禁止再进「假人教学战」（否则会误判为 Boss 通关）
+      this.resumeAdventureAfterTeamBuild(prevProfs);
+    }
+  }
+
+  /** 中途换队：保留进度，补齐新队员与卡组，回地图 */
+  resumeAdventureAfterTeamBuild(prevProfs) {
+    const professionHp = {
+      coder: 30, dog: 35, teacher: 40, security: 50, hooligan: 38,
+      warrior: 50, mage: 35, ranger: 40, priest: 35,
+    };
+    const newProfs = this.selectedProfessions || [];
+    Object.keys(this.teammates || {}).forEach((p) => {
+      if (!newProfs.includes(p)) delete this.teammates[p];
+    });
+    newProfs.forEach((p) => {
+      if (!this.teammates[p]) {
+        const hp = professionHp[p] || 40;
+        this.teammates[p] = { hp, maxHp: hp, shield: 0 };
+      }
+    });
+    const added = newProfs.filter((p) => !prevProfs.includes(p));
+    this.appendStarterCardsForNewProfessions(added);
+    this.gameEnded = false;
+    this.tutorialBattleActive = false;
+    try {
+      this.updateTeammateUI();
+      newProfs.forEach((p) => this.updateTeammateStatus(p));
+      this.updateGoldDisplay();
+      this.renderItems();
+    } catch (_) {}
+    this.showMapView();
+  }
+
+  appendStarterCardsForNewProfessions(added) {
+    if (!Array.isArray(this.deck)) this.deck = [];
+    added.forEach((prof) => {
+      if (prof === "coder") {
+        for (let i = 0; i < 3; i++) this.deck.push("coder_code");
+        this.deck.push("coder_bug", "coder_coffee", "coder_refactor");
+      } else if (prof === "dog") {
+        this.deck.push("dog_bark", "dog_bite", "dog_tail", "dog_guard", "dog_detox", "dog_fetch");
+      } else if (prof === "teacher") {
+        this.deck.push("teacher_lecture", "teacher_homework", "teacher_ruler", "teacher_redpen");
+      } else if (prof === "security") {
+        this.deck.push("security_flashlight", "security_whistle", "security_patrol", "security_baton");
+      } else if (prof === "hooligan") {
+        for (let i = 0; i < 2; i++) this.deck.push("hooligan_punch");
+        this.deck.push("hooligan_kick", "hooligan_sand", "hooligan_intimidate");
+      }
+    });
   }
 
   // 继续游戏
@@ -2919,7 +3229,8 @@ class Game {
     if (enemyLayerEl) {
       enemyLayerEl.textContent = `第 ${this.map.floor} 层${isBoss ? " - Boss" : (isElite ? " - 精英" : "")}`;
     }
-    // 刷新一次我方角色的血量 / 护盾显示，避免出现 \"--/--\" 占位
+    // 生成队友槽位 DOM（开发者捷径跳过教学关时此处从未构建，会导致战斗里看不到角色）
+    this.updateTeammateUI();
     const profs = this.selectedProfessions || [];
     profs.forEach((p) => this.updateTeammateStatus(p));
 
@@ -2931,8 +3242,100 @@ class Game {
     this.renderEnemySprite();
 
     this.renderItems();
+    this._permaBrokenPlayedSlots = [];
     this.showBattleView();
     this.battle.initBattle(this.enemy, this.deck, this.items);
+    if (this.enemy && this.enemy.aiType === "boss1") {
+      this.log(
+        "【黑帮老大】会交替使用「破坏牌型」与「点燃出牌格」。请留意屏幕中央预告与敌人意图栏。",
+        "system"
+      );
+      try {
+        const k = "cityHeroBoss1GuideShown";
+        if (!localStorage.getItem(k)) {
+          localStorage.setItem(k, "1");
+          const name = this.enemy.name || "黑帮老大";
+          setTimeout(() => {
+            this.showModal(
+              "机制说明：" + name,
+              [
+                `${name} 有两种技能轮换使用：`,
+                "",
+                "1）破坏牌型",
+                "Boss 会预告「下回合破坏牌型」。到了那一回合，你在点「出牌」结算时，会随机打碎部分已打出的牌，被打碎的牌本回合伤害失效，并可能产生能量反噬伤害。",
+                "",
+                "2）点燃出牌格",
+                "Boss 会烧毁出牌区上的几个格子，持续若干我方回合（格子上会显示 🔥 与剩余回合数），这段时间内不能往这些格子里放牌。",
+                "",
+                "提示：多留意预告与意图，合理安排出牌顺序与站位（格子序号）。",
+              ].join("\n")
+            );
+          }, 480);
+        }
+      } catch (_) {}
+    }
+    if (this.enemy && this.enemy.aiType === "boss2_poison") {
+      this.log(
+        "【手牌毒】带紫光绿边与角标 ☠数字 的牌已被污染；打出会全队叠毒（回合开始扣血）。换牌丢掉毒牌不触发。狗可解毒/守护。",
+        "system"
+      );
+    }
+    if (this.enemy && this.enemy.aiType === "boss3_crack") {
+      if (typeof this.enemy.boss3CrackCounter !== "number") this.enemy.boss3CrackCounter = 0;
+      this.log(
+        "【裂地】每经过 3 次 Boss 行动，会永久塌陷 1 个出牌格（本场战斗，战后恢复），并叠加护甲。格子呈裂地效果、无回合倒数——请尽快结束战斗！",
+        "system"
+      );
+      const hint = "⚔ 普攻 | 🌋 每 3 次 Boss 行动：裂地（永久少 1 格）+ 护甲";
+      if (this.battle && this.battle.enemy) this.battle.enemy.intentText = hint;
+      this.enemy.intentText = hint;
+      this.updateEnemyDebuffsAndIntent();
+      try {
+        const k3 = "cityHeroBoss3GuideShown";
+        if (!localStorage.getItem(k3)) {
+          localStorage.setItem(k3, "1");
+          const n3 = this.enemy.name || "CTO大魔王";
+          setTimeout(() => {
+            this.showModal(
+              "机制说明：裂地 · " + n3,
+              [
+                `${n3} 会逼迫你速战速决：`,
+                "",
+                "• 每经过 3 次 Boss 行动，会发动一次「裂地」：永久塌陷 1 个出牌格（本场战斗有效），并给自己叠加护甲。",
+                "• 塌陷格呈大地裂纹样式，标注「塌陷」，没有「还剩几回合」的倒数——与第一关「点燃格子」那种限时损坏不同。",
+                "• 击败 Boss 或战斗结束后，出牌区会恢复正常。",
+                "",
+                "建议：尽快压低 Boss 血量，避免出牌位被压到过少。",
+              ].join("\n")
+            );
+          }, 480);
+        }
+      } catch (_) {}
+    }
+  }
+
+  /**
+   * 恶魔校长对手牌下毒后：手牌区说明条 + 首次弹窗（本地仅一次）
+   */
+  onBossHandPoisonApplied(bossName, count) {
+    try {
+      const k = "cityHeroHandPoisonGuideShown";
+      if (localStorage.getItem(k)) return;
+      localStorage.setItem(k, "1");
+      const name = bossName || "Boss";
+      setTimeout(() => {
+        this.showModal(
+          "机制说明：手牌中毒",
+          `${name} 污染了你的 ${count} 张手牌（可能继续叠加）。\n\n` +
+            "怎么看：牌面有紫色光晕、绿色描边，以及大号 ☠+数字。\n\n" +
+            "规则：\n" +
+            "• 打出带毒的牌 → 本回合结束时给全队叠中毒层数。\n" +
+            "• 用「换牌」丢掉的毒牌 → 不会叠毒。\n" +
+            "• 狗的「解毒」可减全队毒层；「守护气息」与同批毒牌一起出可免疫本次反噬。\n\n" +
+            "手牌上方提示条会保留到本场战斗中你不再持有毒牌。"
+        );
+      }, 450);
+    } catch (_) {}
   }
 
   // ===== 敌人/持续伤害支持 =====
@@ -3030,6 +3433,9 @@ class Game {
 
   // 战斗结果回调（由 battle.js 调用）
   onBattleResult(win) {
+    try {
+      this.clearPlayedSlotBattleEffects();
+    } catch (_) {}
     if (win) {
       let goldReward = this.enemy.gold || 20;
 
@@ -3064,8 +3470,14 @@ class Game {
         this.updateTeammateUI();
       } else {
         const currentNode = this.currentNode;
-        if (currentNode && currentNode.type === "boss") {
-          this.unlockAchievement('first_boss');
+        // 训练假人 / 非地图战斗：不计 Boss 通关（防止误判层数解锁）
+        if (this.enemy && this.enemy.id === "dummy") {
+          this.tutorialBattleActive = false;
+        } else if (currentNode && currentNode.type === "boss") {
+          // 保安：仅第2层及以后 Boss 解锁（第1层 Boss 只解锁狗）
+          if ((this.map.floor || 1) >= 2) {
+            this.unlockAchievement("first_boss");
+          }
           this.incStat("bossesDefeated", 1);
           // 每通关一大关（击败该层 Boss）：道具栏容量 +1
           try { this.increaseItemSlotCapacity(1); } catch (_) {}
@@ -3377,22 +3789,38 @@ class Game {
           cardEl.appendChild(badge);
         }
 
-        // Boss2 手牌中毒：显示毒层（跨回合保留）
+        // Boss2 手牌中毒：明显边框 + 左上角毒层角标
         try {
           const p = this.battle && Array.isArray(this.battle.handPoisons) ? (this.battle.handPoisons[i] || 0) : 0;
           if (p > 0) {
+            cardEl.classList.add("card-hand-poisoned");
             const badge = document.createElement("div");
-            badge.className = "card-badge";
+            badge.className = "hand-poison-badge";
             badge.textContent = `☠${p}`;
-            badge.title = "中毒手牌：打出该牌会反噬我方中毒（换牌丢弃则不会触发）";
-            // 右上角流派角标占位：把功能 badge 下移，避免遮挡
-            if (cardEl.querySelector(".card-archetype-badge")) badge.style.top = "28px";
+            badge.title =
+              "【中毒手牌】打出后会给全队叠中毒（回合开始按层数扣血，无视护盾）。用「换牌」丢弃此牌不会触发。";
             cardEl.appendChild(badge);
           }
         } catch (_) {}
         container.appendChild(cardEl);
       }
     }
+
+    try {
+      const bar = document.getElementById("hand-poison-bar");
+      if (bar && this.battle && Array.isArray(this.battle.handPoisons)) {
+        const sum = this.battle.handPoisons.reduce((s, v) => s + (Number(v) || 0), 0);
+        if (sum > 0) {
+          bar.classList.remove("hidden");
+          bar.innerHTML =
+            `<span class="hand-poison-bar-icon">☠</span>` +
+            `<span>手牌上有毒：看牌的 <strong>紫光绿边</strong> 与左上角 <strong>☠数字</strong>。<strong>打出=叠毒</strong>，<strong>换牌丢掉=安全</strong>。</span>`;
+        } else {
+          bar.classList.add("hidden");
+          bar.innerHTML = "";
+        }
+      }
+    } catch (_) {}
 
     const cards = container.querySelectorAll(".card");
     cards.forEach((card) => {
@@ -3820,14 +4248,21 @@ class Game {
     container.innerHTML = "";
     const slots = this.getPlayedSlotCount ? this.getPlayedSlotCount() : 5;
     const brokenTurns = this.getBrokenPlayedSlotTurns ? this.getBrokenPlayedSlotTurns() : new Map();
-    const broken = new Set(Array.from(brokenTurns.keys()));
+    const permaCrack = new Set(
+      Array.isArray(this._permaBrokenPlayedSlots) ? this._permaBrokenPlayedSlots.map((i) => Math.floor(i)).filter((i) => i >= 0) : []
+    );
+    const brokenTimed = new Set(Array.from(brokenTurns.keys()));
+    const broken = new Set([...permaCrack, ...brokenTimed]);
     const played = (this.battle && Array.isArray(this.battle.playedCards)) ? this.battle.playedCards : (playedCards || []);
     const playedSlots = (this.battle && Array.isArray(this.battle.playedSlots)) ? this.battle.playedSlots : [];
 
     // 空槽位（用于“破坏格子”视觉与规则一致）
     for (let s = 0; s < slots; s++) {
       const slotEl = document.createElement("div");
-      slotEl.className = "played-slot" + (broken.has(s) ? " broken" : "");
+      let cls = "played-slot";
+      if (permaCrack.has(s)) cls += " broken crack-perma";
+      else if (brokenTimed.has(s)) cls += " broken";
+      slotEl.className = cls;
       slotEl.dataset.slotIndex = String(s);
       if (brokenTurns.has(s)) slotEl.dataset.brokenTurns = String(brokenTurns.get(s));
       container.appendChild(slotEl);
@@ -3978,15 +4413,24 @@ class Game {
   updateEnemyDebuffsAndIntent() {
     const enemy = this.battle?.enemy || this.enemy;
     if (!enemy) return;
+    // 战斗中以 battle.enemy 为唯一真相，同步到 game.enemy，避免其它逻辑读到过期 debuff
+    if (this.battle?.enemy && this.enemy) {
+      const b = this.battle.enemy;
+      this.enemy.stunned = b.stunned || 0;
+      this.enemy.slow = b.slow || 0;
+      this.enemy.weakness = b.weakness || 0;
+      this.enemy.blind = b.blind || 0;
+      this.enemy.bleed = b.bleed || 0;
+    }
     const debuffsEl = document.getElementById("enemy-debuffs");
     const intentEl = document.getElementById("enemy-intent");
     if (debuffsEl) {
       const badges = [];
-      if ((enemy.stunned || 0) > 0) badges.push(`<span class="debuff-badge stun" title="眩晕：敌人下回合无法行动。剩余 ${enemy.stunned} 回合">✨ ${enemy.stunned}</span>`);
-      if ((enemy.slow || 0) > 0) badges.push(`<span class="debuff-badge slow" title="减速：敌人伤害 -40%。剩余 ${enemy.slow} 回合">🐢 ${enemy.slow}</span>`);
-      if ((enemy.weakness || 0) > 0) badges.push(`<span class="debuff-badge weakness" title="虚弱：敌人伤害 -50%。剩余 ${enemy.weakness} 回合">💔 ${enemy.weakness}</span>`);
-      if ((enemy.blind || 0) > 0) badges.push(`<span class="debuff-badge blind" title="致盲：敌人命中率每层 -20%（最低 5%）。剩余 ${enemy.blind} 回合">👁 ${enemy.blind}</span>`);
-      if ((enemy.bleed || 0) > 0) badges.push(`<span class="debuff-badge bleed" title="流血：敌人回合开始受到等同层数的伤害，并每回合 -1 衰减。当前 ${enemy.bleed}">🩸 ${enemy.bleed}</span>`);
+      if ((enemy.stunned || 0) > 0) badges.push(`<span class="debuff-badge stun" data-debuff="stun" title="眩晕：敌人下回合无法行动。剩余 ${enemy.stunned} 回合">✨ ${enemy.stunned}</span>`);
+      if ((enemy.slow || 0) > 0) badges.push(`<span class="debuff-badge slow" data-debuff="slow" title="减速：敌人伤害 -40%。剩余 ${enemy.slow} 回合">🐢 ${enemy.slow}</span>`);
+      if ((enemy.weakness || 0) > 0) badges.push(`<span class="debuff-badge weakness" data-debuff="weakness" title="虚弱：敌人伤害 -50%。剩余 ${enemy.weakness} 回合">💔 ${enemy.weakness}</span>`);
+      if ((enemy.blind || 0) > 0) badges.push(`<span class="debuff-badge blind" data-debuff="blind" title="致盲：敌人命中率每层 -20%（最低 5%）。剩余 ${enemy.blind} 回合">👁 ${enemy.blind}</span>`);
+      if ((enemy.bleed || 0) > 0) badges.push(`<span class="debuff-badge bleed" data-debuff="bleed" title="流血：敌人回合开始受到等同层数的伤害，并每回合 -1 衰减。当前 ${enemy.bleed}">🩸 ${enemy.bleed}</span>`);
       debuffsEl.innerHTML = badges.length ? badges.join("") : "";
       debuffsEl.classList.toggle("hidden", !badges.length);
       // 让玩家“看见”状态生效：闪一下
@@ -4396,8 +4840,18 @@ class Game {
         const el = document.elementFromPoint(x, y);
         const badge = el && el.closest ? el.closest(".debuff-badge") : null;
         if (badge && badge.textContent) {
-          // title 里已经是完整说明（我们不再依赖浏览器原生 tooltip）
-          const t = badge.getAttribute("title") || "";
+          const g = window.gameInstance;
+          const be = g && g.battle && g.battle.enemy ? g.battle.enemy : null;
+          const kind = badge.getAttribute("data-debuff") || "";
+          let t = "";
+          if (be && kind) {
+            if (kind === "stun") t = `眩晕：敌人下回合无法行动。剩余 ${Math.max(0, Math.floor(be.stunned || 0))} 回合`;
+            else if (kind === "slow") t = `减速：敌人伤害 -40%。剩余 ${Math.max(0, Math.floor(be.slow || 0))} 回合`;
+            else if (kind === "weakness") t = `虚弱：敌人伤害 -50%。剩余 ${Math.max(0, Math.floor(be.weakness || 0))} 回合`;
+            else if (kind === "blind") t = `致盲：敌人命中率每层 -20%（最低 5%）。剩余 ${Math.max(0, Math.floor(be.blind || 0))} 回合`;
+            else if (kind === "bleed") t = `流血：敌人回合开始受到等同层数的伤害，并每回合 -1 衰减。当前 ${Math.max(0, Math.floor(be.bleed || 0))}`;
+          }
+          if (!t) t = badge.getAttribute("title") || "";
           if (t) {
             showStatus(
               `<span class="tooltip-title">状态说明</span><div class="tooltip-line base">${t}</div>`,
@@ -4777,5 +5231,14 @@ class Game {
 let game;
 document.addEventListener("DOMContentLoaded", () => {
   game = new Game();
-  try { window.gameInstance = game; } catch (_) {}
+  try {
+    window.gameInstance = game;
+    window.__CITY_HERO_DEBUG__ = {
+      checkpoints: ["floor1_map", "post_floor1_team", "floor2_map"],
+      /** 例：__CITY_HERO_DEBUG__.load('post_floor1_team') */
+      load(id) {
+        return window.gameInstance && window.gameInstance.debugLoadCheckpoint(id);
+      },
+    };
+  } catch (_) {}
 });

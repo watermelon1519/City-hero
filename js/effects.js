@@ -285,6 +285,69 @@ class EffectsManager {
     overlay.remove();
   }
 
+  /** 第3关 Boss：裂地 — 永久塌陷出牌格（视觉） */
+  async playedSlotCrackGround(opts) {
+    const { slotIndex = 0, bossName = "Boss" } = opts || {};
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const overlay = document.createElement("div");
+    overlay.className = "boss-skill-overlay boss-crack-skill-overlay";
+    overlay.innerHTML = `
+      <div class="skill-title">🌋 ${bossName} · 裂地</div>
+      <div class="skill-desc">出牌格永久塌陷（本场战斗，战后恢复）</div>
+    `;
+    document.body.appendChild(overlay);
+    this.shake(true);
+    try {
+      this.crack(420);
+    } catch (_) {}
+
+    try {
+      const enemySection = document.getElementById("enemy-section");
+      const enemyRect = enemySection
+        ? enemySection.getBoundingClientRect()
+        : { left: window.innerWidth / 2 - 50, top: 70, width: 100, height: 100 };
+      const fromX = enemyRect.left + enemyRect.width / 2;
+      const fromY = enemyRect.top + enemyRect.height * 0.55;
+      const slotEl = document.querySelector(`.played-slot[data-slot-index="${slotIndex}"]`);
+      const beamWrap = document.createElement("div");
+      beamWrap.className = "boss-crack-beam-layer";
+      document.body.appendChild(beamWrap);
+      if (slotEl) {
+        const rect = slotEl.getBoundingClientRect();
+        const toX = rect.left + rect.width / 2;
+        const toY = rect.top + rect.height / 2;
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        for (let i = 0; i < 3; i++) {
+          const line = document.createElement("div");
+          line.className = "boss-crack-beam-line";
+          line.style.width = `${len}px`;
+          line.style.left = `${fromX}px`;
+          line.style.top = `${fromY + (i - 1) * 6}px`;
+          line.style.transform = `rotate(${angle}deg)`;
+          beamWrap.appendChild(line);
+        }
+        try {
+          const dust = ["#78716c", "#57534e", "#a8a29e", "#44403c"];
+          this.particles(toX, toY, 14, dust[Math.floor(Math.random() * dust.length)]);
+        } catch (_) {}
+      }
+      await wait(520);
+      beamWrap.remove();
+    } catch (_) {}
+
+    const slotEl2 = document.querySelector(`.played-slot[data-slot-index="${slotIndex}"]`);
+    if (slotEl2) {
+      slotEl2.classList.add("crack-ground-hit");
+      await wait(1000);
+      slotEl2.classList.remove("crack-ground-hit");
+    }
+    await wait(200);
+    overlay.remove();
+  }
+
   // 敌人攻击射线（从敌人指向目标）
   async enemyAttackBeams(opts) {
     const { targetElements = [], color = "red" } = opts || {};

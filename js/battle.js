@@ -189,6 +189,9 @@ class BattleSystem {
       if (typeof this.game.updatePlayedCount === "function") {
         this.game.updatePlayedCount();
       }
+      if (typeof this.game.updateEnemyDebuffsAndIntent === "function") {
+        this.game.updateEnemyDebuffsAndIntent();
+      }
 
       // 新手引导：聚焦高亮式教学（引导玩家点按钮完成一场战斗）
       try {
@@ -738,7 +741,7 @@ class BattleSystem {
       // 净化：减少我方负面层数（中毒/灼烧）
       if (cleanse > 0 && this.game && this.game.teammates) {
         const profs = this.game.selectedProfessions || [];
-        let changed = false;
+        let anyChanged = false;
         profs.forEach((p) => {
           const t = this.game.teammates[p];
           if (!t || t.hp <= 0) return;
@@ -746,11 +749,21 @@ class BattleSystem {
           const beforeBurn = t.burn || 0;
           const nextPoison = Math.max(0, beforePoison - cleanse);
           const nextBurn = Math.max(0, beforeBurn - cleanse);
-          if (nextPoison !== beforePoison) { t.poison = nextPoison; changed = true; }
-          if (nextBurn !== beforeBurn) { t.burn = nextBurn; changed = true; }
-          if (changed && typeof this.game.updateTeammateStatus === "function") this.game.updateTeammateStatus(p);
+          let changedP = false;
+          if (nextPoison !== beforePoison) {
+            t.poison = nextPoison;
+            changedP = true;
+          }
+          if (nextBurn !== beforeBurn) {
+            t.burn = nextBurn;
+            changedP = true;
+          }
+          if (changedP) {
+            anyChanged = true;
+            if (typeof this.game.updateTeammateStatus === "function") this.game.updateTeammateStatus(p);
+          }
         });
-        if (changed) this.game.log(`🧼 净化：全队中毒/灼烧 -${cleanse}`, "system");
+        if (anyChanged) this.game.log(`🧼 净化：全队中毒/灼烧 -${cleanse}`, "system");
       }
 
       // Boss2 手牌中毒机制：若打出了“中毒手牌”，则我方中毒（除非本回合打出狗的守护牌）
@@ -761,7 +774,9 @@ class BattleSystem {
           return c && c.negateHandPoison;
         });
         const poisons = Array.isArray(this.playedCardPoisons) ? this.playedCardPoisons : [];
-        const totalPoison = poisons.reduce((s, v) => s + (Number(v) || 0), 0);
+        let totalPoison = poisons.reduce((s, v) => s + (Number(v) || 0), 0);
+        // 本回合打出净化牌（解毒）：本批手牌毒反噬不叠加，否则先 -6 再加十几层等于白打
+        if (cleanse > 0) totalPoison = 0;
         if (totalPoison > 0) {
           if (hasGuard) {
             this.game.log(`🛡️ 守护气息：本回合中毒手牌的异常效果无效（免疫中毒 ${totalPoison}）`, "system");
@@ -965,7 +980,11 @@ class BattleSystem {
         this.enemy.hp = Math.max(0, (this.enemy.hp || 0) - dmg);
         try {
           if (this.game && this.game.effects && typeof this.game.effects.showDamageNumber === "function") {
-            this.game.effects.showDamageNumber({ target: "enemy", value: dmg, kind: "bleed" });
+            const enemyEl = document.getElementById("enemy-section");
+            const rect = enemyEl ? enemyEl.getBoundingClientRect() : null;
+            const x = rect ? (rect.left + rect.width / 2) : (window.innerWidth / 2);
+            const y = rect ? (rect.top + 12) : 80;
+            this.game.effects.showDamageNumber(Math.floor(dmg), x, y, false, false);
           }
         } catch (_) {}
         if (this.game && typeof this.game.animateEnemyHP === "function") {
@@ -984,6 +1003,11 @@ class BattleSystem {
       // 眩晕：本回合跳过攻击
       if ((this.enemy.stunned || 0) > 0) {
         this.enemy.stunned--;
+        // 眩晕跳过时，其它“持续 N 回合”的 debuff 也应正常衰减，
+        // 否则会出现玩家连续空过/控住敌人时，减速/虚弱/致盲回合数不减少的情况。
+        if ((this.enemy.slow || 0) > 0) this.enemy.slow--;
+        if ((this.enemy.weakness || 0) > 0) this.enemy.weakness--;
+        if ((this.enemy.blind || 0) > 0) this.enemy.blind--;
         // 被眩晕时：不触发本回合的随机机制技能（持续型效果已在别处结算）
         if (this.enemy && this.enemy.aiType === "boss1") this.enemy.boss1Skill = null;
         this.game.log(`✨ ${this.enemy.name} 被眩晕，本回合无法行动`, "system");
@@ -1181,6 +1205,11 @@ class BattleSystem {
           const picked = this.poisonHandCards(4, 1, 2);
           this.game.log(`☠️ ${this.enemy.name} 对你的手牌下毒：${picked.length} 张手牌被污染（每张 1~2 层）`, "enemy");
           this.game.renderHand(this.hand);
+          try {
+            if (picked.length > 0 && typeof this.game.onBossHandPoisonApplied === "function") {
+              this.game.onBossHandPoisonApplied(this.enemy.name, picked.length);
+            }
+          } catch (_) {}
           this.enemy.intentText = `🩹 下回合：回血 + 攻击`;
           await wait(900);
         } else if (actIndex % 3 === 2) {
@@ -1194,19 +1223,38 @@ class BattleSystem {
           await enemyAttack(Math.floor(baseAtk * 1.15));
           this.enemy.intentText = `☠️ 下回合：手牌下毒`;
         }
-      } else if (ai === "boss3_fire") {
-        // 第3层 Boss：火焰叠加（护盾减免50%）+ 火焰攻击
-        if (actIndex % 2 === 1) {
-          this.game.addTeamStatus("burn", 18);
-          this.game.log(`🔥 ${this.enemy.name} 叠加火焰 +18（护盾减免 50%，每回合消耗 12 层）`, "enemy");
-          this.enemy.intentText = `🔥 下回合：火焰攻击 (${applyDebuffMult(Math.floor(baseAtk * 0.9))} 伤害，护盾减免50%)`;
-        } else {
-          const dmg = Math.floor(baseAtk * 0.9);
-          this.game.log(`${this.enemy.name} 释放火焰打击`, "enemy");
-          if (window.audioManager) window.audioManager.enemyAttack();
-          await enemyAttack(applyDebuffMult(dmg), { aoe: true, damageType: "burn", damageOpts: { shieldFactor: 0.5 } });
-          this.enemy.intentText = `🔥 下回合：叠加火焰 +18`;
+      } else if (ai === "boss3_crack") {
+        // 第3层 Boss：每 3 次行动裂地（永久少 1 出牌格）+ 叠护甲 + 普攻，逼玩家速战
+        if (typeof this.enemy.boss3CrackCounter !== "number") this.enemy.boss3CrackCounter = 0;
+        this.enemy.boss3CrackCounter++;
+        if (this.enemy.boss3CrackCounter >= 3) {
+          this.enemy.boss3CrackCounter = 0;
+          const floor = (this.game.map && this.game.map.floor) || 3;
+          const shieldAdd = 12 + Math.max(0, floor) * 5;
+          this.enemy.armor = Math.max(0, (this.enemy.armor || 0) + shieldAdd);
+          const picked = this.game.applyPermanentPlayedSlotCrack(1);
+          this.game.renderPlayedArea(this.playedCards);
+          if (picked.length > 0) {
+            this.game.log(`🌋 ${this.enemy.name} 裂地！1 格出牌区永久塌陷，护甲 +${shieldAdd}`, "enemy");
+            if (this.game.effects && typeof this.game.effects.playedSlotCrackGround === "function") {
+              await this.game.effects.playedSlotCrackGround({
+                slotIndex: picked[0],
+                bossName: this.enemy.name,
+              });
+            }
+          } else {
+            this.game.log(`🌋 ${this.enemy.name} 裂地！出牌区已无法再塌，护甲仍 +${shieldAdd}`, "enemy");
+            if (this.game.effects && typeof this.game.effects.shake === "function") this.game.effects.shake(true);
+            await wait(450);
+          }
         }
+        if (window.audioManager) window.audioManager.enemyAttack();
+        await enemyAttack(Math.floor(baseAtk * 1.08));
+        const left = 3 - (this.enemy.boss3CrackCounter || 0);
+        this.enemy.intentText =
+          left <= 1
+            ? `🌋 下次 Boss 行动：裂地塌陷 + 护甲`
+            : `⚔ 攻击 | 🌋 再过 ${left} 次 Boss 行动：裂地`;
       } else if (ai === "boss4_tank") {
         // 第4层 Boss：高护甲高攻击，护甲逐回合增强
         this.enemy.armor = (this.enemy.armor || 12) + 4;

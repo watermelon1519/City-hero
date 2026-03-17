@@ -53,7 +53,7 @@ const FLOORS = [
       { id: "deadline", name: "Deadline", hp: 100, atk: 15, icon: "⏰" },
       { id: "coffee_zombie", name: "咖啡僵尸", hp: 60, atk: 8, icon: "☕" },
     ],
-    boss: { id: "boss_cto", name: "CTO大魔王", hp: 450, atk: 18, icon: "💀", aiType: "boss3_fire" },
+    boss: { id: "boss_cto", name: "CTO大魔王", hp: 450, atk: 18, icon: "💀", aiType: "boss3_crack", armor: 8 },
     events: [
       { id: "vending_coffee", name: "咖啡机", icon: "☕", description: "免费咖啡，精神一振！", effect: { gold: 10, buff: "damage", value: 1.1 } },
       { id: "code_review", name: "代码审查", icon: "👀", description: "发现 Bug 修掉，拿了奖金。", effect: { gold: 35 } },
