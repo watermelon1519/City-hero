@@ -190,7 +190,7 @@ class MapManager {
     
     // 精英怪加强
     if (type === "elite") {
-      return {
+      const base = {
         ...template,
         name: `★${template.name}`,
         hp: Math.floor(template.hp * 1.8),
@@ -198,6 +198,11 @@ class MapManager {
         gold: 40 + this.floor * 15,
         isElite: true
       };
+      // 第一层精英：具备 Boss1 的“破坏牌型”机制，但只破坏 1 张牌
+      if ((floor && floor.id) === 1) {
+        base.aiType = "elite1_shatter";
+      }
+      return base;
     }
 
     // 普通敌人随机强化

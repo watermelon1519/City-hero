@@ -29,6 +29,17 @@
         <button id="btn-achievements" class="start-btn">🏆 成就</button>
         <button id="btn-settings" class="start-btn secondary">⚙️ 设置</button>
       </div>
+
+      <!-- 难度选择（通关逐级解锁） -->
+      <div id="difficulty-modal" class="modal hidden">
+        <div class="modal-content">
+          <h2>选择难度</h2>
+          <div id="difficulty-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+            <button id="difficulty-cancel" class="secondary-btn">取消</button>
+          </div>
+        </div>
+      </div>
       <div class="start-footer">
         <p>v1.0.0 | 按任意键开始</p>
       </div>
@@ -209,6 +220,7 @@
       </div>
       <div id="rules-base-section" class="rules-section">
         <div class="rules-section-title">基础牌型</div>
+        <div id="rules-base-hint" class="rules-hint"></div>
         <div id="rules-base-list" class="rules-list"></div>
       </div>
       <div id="rules-code-section" class="rules-section">
@@ -279,6 +291,7 @@
             <span class="combo-damage damage-formula" id="turn-damage">0 × 1.0 = 0</span>
           </div>
           <div id="damage-breakdown-tooltip" class="damage-breakdown-tooltip hidden"></div>
+        <div id="status-hover-tooltip" class="damage-breakdown-tooltip hidden"></div>
                   <div class="battle-sidebar-row">
             <span class="label">出牌区</span>
             <span class="value" id="battle-played-count">0 / 5</span>
@@ -303,6 +316,7 @@
                 <span class="enemy-name" id="enemy-name">街头混混</span>
                 <span class="enemy-layer" id="enemy-layer">第 1 层</span>
               </div>
+              <div id="enemy-sprite" class="enemy-pixel" aria-hidden="true"></div>
               <div class="enemy-hp-bar">
                 <div id="enemy-hp-fill" class="hp-fill"></div>
               </div>
@@ -321,12 +335,7 @@
                     <div class="section-label">本回合出牌（基础最多 5 张，道具可提高）</div>
             <div id="item-section" class="hand-items-row">
               <span class="section-label-inline">道具</span>
-              <div class="item-slots">
-                <div class="item-slot" id="item-0"></div>
-                <div class="item-slot" id="item-1"></div>
-                <div class="item-slot" id="item-2"></div>
-                <div class="item-slot" id="item-3"></div>
-              </div>
+              <div class="item-slots" id="item-slots"></div>
               <div id="item-tooltip" class="item-tooltip hidden"></div>
             </div>
             <div id="played-container" class="played-container"></div>
@@ -398,6 +407,17 @@
       <div class="settings-item">
         <label>🎨 像素风UI</label>
         <input type="checkbox" id="pixel-mode-toggle" checked>
+      </div>
+      <div class="settings-item" style="flex-direction: column; align-items: stretch; gap: 10px;">
+        <label style="width:100%;">🧪 测试工具（本地数据）</label>
+        <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-start;">
+          <button id="btn-reset-saves" class="secondary-btn">清空存档</button>
+          <button id="btn-reset-unlocks" class="secondary-btn">重置解锁/难度</button>
+          <button id="btn-reset-all" class="secondary-btn">全清（推荐）</button>
+        </div>
+        <div style="font-size:12px; color:#aaa; line-height:1.4;">
+          提示：这些按钮只影响浏览器本地存储（LocalStorage），用于测试解锁与流程。
+        </div>
       </div>
       <button id="settings-close" class="action-btn">关闭</button>
     </div>

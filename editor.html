@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>城市英雄 - 数据编辑器</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body {
+      background: #020617;
+      color: #fff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    #editor-root {
+      max-width: 1200px;
+      margin: 16px auto;
+      padding: 12px 16px 32px;
+    }
+    .editor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .editor-title {
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .editor-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .editor-tab {
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.8);
+      cursor: pointer;
+      font-size: 13px;
+      background: rgba(15,23,42,0.95);
+      color: #e5e7eb;
+      box-shadow: 0 0 0 1px rgba(15,23,42,1);
+    }
+    .editor-tab:hover {
+      border-color: #64748b;
+      background: rgba(30,64,175,0.35);
+    }
+    .editor-tab.active {
+      border-color: #4ecca3;
+      background: linear-gradient(135deg, rgba(78,204,163,0.25), rgba(34,197,94,0.25));
+      color: #ecfeff;
+      box-shadow: 0 0 0 1px rgba(15,23,42,1), 0 0 12px rgba(34,197,94,0.4);
+    }
+    .editor-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .editor-panel {
+      background: rgba(15,23,42,0.95);
+      border-radius: 10px;
+      border: 1px solid rgba(148,163,184,0.4);
+      padding: 10px 12px;
+    }
+    .editor-panel h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: #e5e7eb;
+    }
+    .editor-search {
+      margin-bottom: 8px;
+      display: flex;
+      gap: 6px;
+    }
+    .editor-search input,
+    .editor-search select {
+      flex: 1;
+      padding: 4px 6px;
+      font-size: 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(148,163,184,0.6);
+      background: #020617;
+      color: #e5e7eb;
+    }
+    .editor-list {
+      max-height: 520px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+    .editor-list-item {
+      padding: 6px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid transparent;
+    }
+    .editor-list-item:hover {
+      background: rgba(30,64,175,0.35);
+    }
+    .editor-list-item.active {
+      background: rgba(34,197,94,0.25);
+      border-color: #22c55e;
+    }
+    .editor-list-main {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .editor-list-id {
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    .editor-badge {
+      padding: 1px 5px;
+      border-radius: 999px;
+      font-size: 10px;
+      border: 1px solid rgba(148,163,184,0.6);
+      color: #9ca3af;
+    }
+    .editor-badge.prof {
+      border-color: #4ecca3;
+      color: #6ee7b7;
+    }
+    .editor-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0,1fr));
+      gap: 8px 12px;
+      font-size: 13px;
+    }
+    .editor-field {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .editor-field-full {
+      grid-column: span 2;
+    }
+    .editor-field label {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    .editor-field input,
+    .editor-field select,
+    .editor-field textarea {
+      padding: 4px 6px;
+      font-size: 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(148,163,184,0.6);
+      background: #020617;
+      color: #e5e7eb;
+    }
+    .editor-field input[type="number"] {
+      max-width: 120px;
+    }
+    .editor-field textarea {
+      min-height: 60px;
+      resize: vertical;
+    }
+    .editor-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .btn {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.8);
+      font-size: 12px;
+      cursor: pointer;
+      background: rgba(15,23,42,0.9);
+      color: #e5e7eb;
+    }
+    .btn-primary {
+      border-color: #4ecca3;
+      background: linear-gradient(135deg, #4ecca3, #22c55e);
+      color: #022c22;
+      font-weight: 600;
+    }
+    .btn-danger {
+      border-color: #ef4444;
+      color: #fecaca;
+    }
+    .editor-hint {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    @media (max-width: 900px) {
+      .editor-layout {
+        grid-template-columns: 1fr;
+      }
+      .editor-panel {
+        padding: 8px 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="editor-root">
+    <div class="editor-header">
+      <div class="editor-title">城市英雄 · 数据编辑器（设计者用）</div>
+      <div style="font-size:12px;color:#9ca3af;">本页不会出现在玩家入口，仅通过 <code>/editor.html</code> 访问</div>
+    </div>
+    <div class="editor-tabs">
+      <button class="editor-tab active" data-tab="cards">卡牌</button>
+      <button class="editor-tab" data-tab="items">道具</button>
+      <button class="editor-tab" data-tab="roles">职业（只读）</button>
+    </div>
+    <div class="editor-layout">
+      <div class="editor-panel">
+        <h3 id="list-title">卡牌列表</h3>
+        <div class="editor-search">
+          <input id="search-input" placeholder="按名称 / id 搜索">
+          <select id="filter-select">
+            <option value="">全部职业</option>
+          </select>
+        </div>
+        <div id="editor-list" class="editor-list"></div>
+      </div>
+      <div class="editor-panel">
+        <h3 id="form-title">详情编辑</h3>
+        <form id="editor-form" class="editor-form"></form>
+        <div class="editor-actions">
+          <button type="button" id="btn-new" class="btn">新增</button>
+          <button type="button" id="btn-duplicate" class="btn">复制</button>
+          <button type="button" id="btn-delete" class="btn btn-danger">删除</button>
+          <button type="button" id="btn-export" class="btn-primary">导出当前类型 JSON</button>
+        </div>
+        <div class="editor-hint">
+          导出 JSON 后，可将其保存为 <code>cards.generated.json</code> / <code>items.generated.json</code> 等文件，并在游戏启动时优先加载。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/cards.js"></script>
+  <script src="js/items.js"></script>
+  <script src="js/editor.js"></script>
+</body>
+</html>
+

@@ -3,12 +3,17 @@ class Game {
   constructor() {
     this.battle = new BattleSystem(this);
     this.items = []; // 初始道具为空
+    this.itemSlotCapacity = 4; // 道具栏容量（可永久扩展）
     this.gold = 100; // 初始金币
+    this.difficulty = 1;
+    this.maxDifficultyUnlocked = 1;
+    this.difficultiesCompleted = [];
     this.gameStarted = false; // 游戏是否已开始
     this.isFirstBattle = true; // 是否是第一场战斗
     this.gameEnded = false;
     this.turnDamageCommitted = false; // 本回合是否已结算伤害（未结算时显示预计伤害）
     this.cardLevels = {}; // 卡牌类型 -> 等级 (1~3)，用于商店升级与战斗结算
+    this.battleUIEnabled = true; // 战斗交互是否可用（结算/动画期间会锁定）
 
     // 地图
     this.map = new MapManager(this);
@@ -19,10 +24,10 @@ class Game {
     this.discoveredCombos = [];
     this.loadDiscoveredCombos();
 
-    // 当前选择的职业组合（玩家可以选择 1–3 个职业出战）
-    this.selectedProfessions = ["coder", "dog", "hooligan"];
-    // 已解锁职业（通关校园 BOSS 可解锁老师）
-    this.unlockedProfessions = ["coder", "dog", "hooligan"];
+    // 当前选择的职业组合（难度1开局仅流氓可用）
+    this.selectedProfessions = ["hooligan"];
+    // 已解锁职业（难度1：开局仅流氓；后续通关解锁）
+    this.unlockedProfessions = ["hooligan"];
     this.loadUnlockedProfessions();
 
     // 已解锁卡牌/道具（用于“成就解锁内容”与商店卡池过滤）
@@ -72,6 +77,35 @@ class Game {
     return 5;
   }
 
+  getItemSlotCapacity() {
+    return Math.max(1, Math.floor(this.itemSlotCapacity || 4));
+  }
+
+  increaseItemSlotCapacity(delta = 1) {
+    const d = Math.max(0, Math.floor(delta || 0));
+    if (!d) return;
+    this.itemSlotCapacity = this.getItemSlotCapacity() + d;
+    this.renderItems();
+    this.log(`🎒 道具栏扩展：容量 +${d}（当前 ${this.getItemSlotCapacity()} 格）`, "system");
+  }
+
+  // 控制命中加成（用于对抗 Boss 免控）
+  getControlChanceBonusFromItems() {
+    try {
+      const items = Array.isArray(this.items) ? this.items : [];
+      let bonus = 0;
+      for (const id of items) {
+        const item = (typeof ITEMS_DB !== "undefined") ? ITEMS_DB[id] : null;
+        if (!item || !item.effect) continue;
+        const eff = item.effect({}) || {};
+        if (typeof eff.controlChanceBonus === "number") bonus += eff.controlChanceBonus;
+      }
+      return bonus;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   getPlayedLimitBonus() {
     try {
       const items = Array.isArray(this.items) ? this.items : [];
@@ -89,7 +123,89 @@ class Game {
   }
 
   getPlayedLimit() {
+    const slots = this.getPlayedSlotCount();
+    const broken = this.getBrokenPlayedSlots().size;
+    return Math.max(1, slots - broken);
+  }
+
+  // 出牌区“格子”总数：基础 + 道具常驻 + 本回合临时（骰子）
+  getPlayedSlotCount() {
     return this.getBasePlayedLimit() + this.getPlayedLimitBonus() + (this._tempPlayedLimitBonusThisTurn || 0);
+  }
+
+  getBrokenPlayedSlots() {
+    const out = new Set();
+    const arr = Array.isArray(this._brokenPlayedSlots) ? this._brokenPlayedSlots : [];
+    for (const x of arr) {
+      if (!x) continue;
+      const idx = Math.floor(x.idx);
+      const turns = Math.floor(x.turns);
+      if (Number.isFinite(idx) && idx >= 0 && Number.isFinite(turns) && turns > 0) out.add(idx);
+    }
+    return out;
+  }
+
+  getBrokenPlayedSlotTurns() {
+    const out = new Map();
+    const arr = Array.isArray(this._brokenPlayedSlots) ? this._brokenPlayedSlots : [];
+    for (const x of arr) {
+      if (!x) continue;
+      const idx = Math.floor(x.idx);
+      const turns = Math.floor(x.turns);
+      if (!Number.isFinite(idx) || idx < 0 || !Number.isFinite(turns) || turns <= 0) continue;
+      // 同一格子若重复记录，取更久的
+      out.set(idx, Math.max(out.get(idx) || 0, turns));
+    }
+    return out;
+  }
+
+  // Boss/机制：随机烧毁出牌区格子（持续若干个“我方回合开始”）
+  applyPlayedSlotBurn(brokenCount = 1, turns = 2) {
+    const count = Math.max(0, Math.floor(brokenCount || 0));
+    const t = Math.max(0, Math.floor(turns || 0));
+    if (!count || !t) return [];
+    const slots = this.getPlayedSlotCount();
+    if (slots <= 0) return [];
+    const existing = this.getBrokenPlayedSlots();
+    const candidates = [];
+    for (let i = 0; i < slots; i++) {
+      if (!existing.has(i)) candidates.push(i);
+    }
+    if (!candidates.length) return [];
+    // 选出要烧毁的格子
+    const picked = candidates.sort(() => Math.random() - 0.5).slice(0, Math.min(count, candidates.length));
+    if (!Array.isArray(this._brokenPlayedSlots)) this._brokenPlayedSlots = [];
+    for (const idx of picked) {
+      this._brokenPlayedSlots.push({ idx, turns: t });
+    }
+    this.setPlayedAreaBurning(true);
+    if (typeof this.updatePlayedCount === "function") this.updatePlayedCount();
+    if (typeof this.renderPlayedArea === "function" && this.battle) this.renderPlayedArea(this.battle.playedCards);
+    return picked;
+  }
+
+  tickPlayedSlotBurnAtTurnStart() {
+    const arr = Array.isArray(this._brokenPlayedSlots) ? this._brokenPlayedSlots : [];
+    if (!arr.length) {
+      this.setPlayedAreaBurning(false);
+      return;
+    }
+    const next = [];
+    for (const x of arr) {
+      if (!x) continue;
+      const turns = Math.floor(x.turns) - 1;
+      if (turns > 0) next.push({ idx: Math.floor(x.idx), turns });
+    }
+    this._brokenPlayedSlots = next;
+    this.setPlayedAreaBurning(next.length > 0);
+    if (typeof this.updatePlayedCount === "function") this.updatePlayedCount();
+    if (typeof this.renderPlayedArea === "function" && this.battle) this.renderPlayedArea(this.battle.playedCards);
+  }
+
+  setPlayedAreaBurning(active) {
+    const wrap = document.getElementById("played-area-wrap");
+    if (!wrap) return;
+    wrap.classList.toggle("boss-fire", !!active);
   }
 
   // 回合开始时计算“本回合临时加成”（例如骰子）
@@ -127,6 +243,34 @@ class Game {
     } catch (_) {
       return 0;
     }
+  }
+
+  // 每回合换牌上限（默认2，可被道具/本回合效果增减）
+  getBaseMulliganLimit() {
+    return 2;
+  }
+
+  getMulliganLimitBonusFromItems() {
+    try {
+      const items = Array.isArray(this.items) ? this.items : [];
+      let bonus = 0;
+      for (const id of items) {
+        const item = (typeof ITEMS_DB !== "undefined") ? ITEMS_DB[id] : null;
+        if (!item || !item.effect) continue;
+        const eff = item.effect({}) || {};
+        if (typeof eff.mulliganLimitBonus === "number") bonus += eff.mulliganLimitBonus;
+      }
+      return bonus;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  getMulliganLimit() {
+    const base = this.getBaseMulliganLimit();
+    const bonus = this.getMulliganLimitBonusFromItems();
+    const temp = Number(this._tempMulliganLimitBonusThisTurn || 0);
+    return Math.max(0, Math.floor(base + bonus + temp));
   }
 
   // ===== 新手引导（聚焦高亮）=====
@@ -246,35 +390,12 @@ class Game {
           condition: () => (this.battle?.playedCards?.length || 0) >= Math.min(5, (this.getPlayedLimit ? this.getPlayedLimit() : 5)),
         },
         {
-          title: "伤害规则：点这里查看倍率",
-          text:
-            "点击【牌型 / 伤害规则】可以查看基础倍率与隐藏组合。\n" +
-            "看完后点「返回」。",
-          selector: "#battle-rules-btn",
-          advance: "click",
-        },
-        {
-          title: "关闭规则页回到战斗",
-          text: "点击【返回】回到战斗界面。",
-          selector: "#combos-close",
-          advance: "click",
-        },
-        {
           title: "结算：结束回合造成伤害",
           text:
             "最后点击【结束回合】。\n" +
-            "系统会按出牌区结算伤害（并有机会触发隐藏组合技）。",
+            "系统会按出牌区结算伤害。",
           selector: "#end-turn-btn",
           advance: "click",
-        },
-        {
-          title: "提示：隐藏组合技",
-          text:
-            "你刚才可能触发了【隐藏组合】。\n" +
-            "某些特定卡牌搭配会有特殊组合技（倍率/眩晕/抽牌等）。\n" +
-            "之后在「牌型 / 伤害规则」里也能查看已发现组合。",
-          selector: "#battle-rules-btn",
-          advance: "manual",
         },
       ];
 
@@ -518,7 +639,7 @@ class Game {
     // 开始游戏
     const startBtn = document.getElementById('btn-start-game');
     if (startBtn) {
-      startBtn.addEventListener('click', () => this.startNewGame());
+      startBtn.addEventListener('click', () => this.openDifficultyModal());
     }
     const teamBuildStart = document.getElementById('team-build-start');
     if (teamBuildStart) {
@@ -558,6 +679,37 @@ class Game {
         this.startNewGame();
       }
     });
+  }
+
+  openDifficultyModal() {
+    const modal = document.getElementById("difficulty-modal");
+    const list = document.getElementById("difficulty-list");
+    const cancel = document.getElementById("difficulty-cancel");
+    if (!modal || !list) {
+      // 兜底：没有弹窗就按默认难度1开局
+      this.startNewGame(1);
+      return;
+    }
+    list.innerHTML = "";
+    const max = Math.max(1, this.maxDifficultyUnlocked || 1);
+    for (let d = 1; d <= 5; d++) {
+      const unlocked = d <= max;
+      const btn = document.createElement("button");
+      btn.className = "start-btn";
+      btn.disabled = !unlocked;
+      const done = Array.isArray(this.difficultiesCompleted) && this.difficultiesCompleted.includes(d);
+      btn.textContent = unlocked
+        ? `难度 ${d}${done ? "（已通关）" : ""}`
+        : `难度 ${d}（未解锁）`;
+      btn.onclick = () => {
+        modal.classList.add("hidden");
+        this.startNewGame(d);
+      };
+      list.appendChild(btn);
+    }
+    if (cancel) cancel.onclick = () => modal.classList.add("hidden");
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add("hidden"); };
+    modal.classList.remove("hidden");
   }
 
   // 检查存档
@@ -638,13 +790,20 @@ class Game {
   }
 
   // 开始新游戏 -> 先进入战队构建
-  startNewGame() {
+  startNewGame(difficulty = 1) {
     this.gameStarted = true;
     this.isFirstBattle = true;
+    this.difficulty = Math.max(1, Math.floor(difficulty || 1));
     this.gold = 100;
     this.items = [];
     this.discoveredCombos = [];
-    this.selectedProfessions = ["coder", "dog", "hooligan"];
+    // 难度1开局：仅流氓可用
+    this.selectedProfessions = ["hooligan"];
+    if (this.difficulty === 1) {
+      // 关键：开新一局难度1时，职业解锁从0开始（狗/老师需要在本次流程中解锁）
+      this.unlockedProfessions = ["hooligan"];
+      this.saveUnlockedProfessions();
+    }
 
     const startScreen = document.getElementById('start-screen');
     if (startScreen) startScreen.classList.add('hidden');
@@ -666,13 +825,19 @@ class Game {
     listEl.innerHTML = "";
     const labels = { coder: "程序员", dog: "狗", teacher: "老师", security: "保安", hooligan: "流氓" };
     const icons = { coder: "💻", dog: "🐕", teacher: "📚", security: "👮", hooligan: "👊" };
-    (this.unlockedProfessions || []).forEach(prof => {
+    const allProfs = ["hooligan", "dog", "coder", "teacher", "security"];
+    const unlocked = new Set(this.unlockedProfessions || []);
+    allProfs.forEach(prof => {
       const btn = document.createElement("button");
       btn.className = "team-build-prof-btn";
       btn.dataset.prof = prof;
       btn.textContent = `${icons[prof] || "?"} ${labels[prof] || prof}`;
+      const isUnlocked = unlocked.has(prof);
+      btn.disabled = !isUnlocked;
+      btn.classList.toggle("locked", !isUnlocked);
       if (this.teamBuildSelection.includes(prof)) btn.classList.add("team-build-prof-selected");
       btn.addEventListener("click", () => {
+        if (!isUnlocked) return;
         const idx = this.teamBuildSelection.indexOf(prof);
         if (idx >= 0) {
           if (this.teamBuildSelection.length <= 1) return;
@@ -685,7 +850,16 @@ class Game {
         this.updateTeamBuildDeckPreview();
       });
       listEl.appendChild(btn);
+
+      // 新解锁职业：闪一下引导
+      try {
+        if (this._flashUnlockedProfession && this._flashUnlockedProfession === prof && isUnlocked) {
+          btn.classList.add("prof-flash");
+          setTimeout(() => btn.classList.remove("prof-flash"), 1600);
+        }
+      } catch (_) {}
     });
+    this._flashUnlockedProfession = null;
     this.updateTeamBuildDeckPreview();
     this.updateTeamBuildDetailPanel(null);
 
@@ -694,6 +868,12 @@ class Game {
     document.getElementById("shop-view")?.classList.add("hidden");
     document.getElementById("event-view")?.classList.add("hidden");
     view.classList.remove("hidden");
+  }
+
+  showProfessionUnlockModal(prof) {
+    const labels = { coder: "程序员", dog: "狗", teacher: "老师", security: "保安", hooligan: "流氓" };
+    const icons = { coder: "💻", dog: "🐕", teacher: "📚", security: "👮", hooligan: "👊" };
+    this.showModal("新职业解锁！", `${icons[prof] || "✨"} ${labels[prof] || prof} 已解锁。\n现在可以在组队页面加入队伍。`);
   }
 
   updateTeamBuildDeckPreview() {
@@ -715,10 +895,20 @@ class Game {
     previewEl.innerHTML = "";
     sorted.forEach(([cardId, count]) => {
       const card = CARDS_DB[cardId];
+      const prof = (card && card.profession) ? card.profession : "common";
+      const profShort = (typeof PROFESSION_SHORT !== "undefined" && PROFESSION_SHORT[prof]) ? PROFESSION_SHORT[prof] : (prof === "common" ? "通" : (prof || "通").slice(0, 1));
+      const archRaw = (card && (card.archetype || card.type)) || "";
+      const archLabel =
+        archRaw === "attack" ? "攻" :
+        archRaw === "skill" ? "守" :
+        archRaw === "item" ? "技" :
+        (archRaw ? String(archRaw) : "");
       const el = document.createElement("div");
       el.className = "team-build-card-item" + (selectedId === cardId ? " selected" : "");
       el.dataset.cardId = cardId;
       el.innerHTML = `
+        <div class="tb-card-prof-badge" data-profession="${prof}">${profShort}</div>
+        ${archLabel ? `<div class="tb-card-arch-badge" data-arch="${archLabel}">${archLabel}</div>` : ""}
         <div class="tb-card-icon">${card ? card.icon : "🃏"}</div>
         <div class="tb-card-name">${card ? card.name : cardId}</div>
         <div class="tb-card-count">× ${count}</div>
@@ -751,8 +941,28 @@ class Game {
     const effectEl = document.getElementById("team-build-detail-effect");
     if (iconEl) iconEl.textContent = card ? card.icon : "🃏";
     if (nameEl) nameEl.textContent = card ? card.name : cardId;
-    if (descEl) descEl.textContent = card ? (card.description || "") : "";
-    if (effectEl) effectEl.textContent = card ? (card.detail || "") : "";
+    if (descEl) {
+      const archRaw = (card && (card.archetype || card.type)) || "";
+      const archLabel =
+        archRaw === "attack" ? "攻" :
+        archRaw === "skill" ? "守" :
+        archRaw === "item" ? "技" :
+        (archRaw ? String(archRaw) : "");
+      const prefix = archLabel ? `【${archLabel}】 ` : "";
+      descEl.textContent = card ? (prefix + (card.description || "")) : "";
+    }
+    if (effectEl) {
+      let detail = card ? (card.detail || "") : "";
+      try {
+        // 与 tooltip 一致：未解锁的跨职业组合不泄露具体名称
+        const unlocked = Array.isArray(this.unlockedProfessions) ? this.unlockedProfessions : [];
+        const discovered = Array.isArray(this.discoveredCombos) ? this.discoveredCombos : [];
+        if (detail && typeof CardUtil !== "undefined" && typeof CardUtil.maskCrossComboText === "function") {
+          detail = CardUtil.maskCrossComboText(detail, unlocked, discovered);
+        }
+      } catch (_) {}
+      effectEl.textContent = detail;
+    }
   }
 
   getStarterDeckForProfessions(profs) {
@@ -762,7 +972,7 @@ class Game {
         for (let i = 0; i < 3; i++) deck.push("coder_code");
         deck.push("coder_bug", "coder_coffee", "coder_refactor");
       } else if (prof === "dog") {
-        deck.push("dog_bark", "dog_bite", "dog_tail", "dog_fetch");
+        deck.push("dog_bark", "dog_bite", "dog_tail", "dog_guard", "dog_detox", "dog_fetch");
       } else if (prof === "teacher") {
         deck.push("teacher_lecture", "teacher_homework", "teacher_ruler", "teacher_redpen");
       } else if (prof === "security") {
@@ -800,6 +1010,7 @@ class Game {
 
         this.gold = data.gold || 100;
         this.items = data.items || [];
+        this.itemSlotCapacity = data.itemSlotCapacity || this.itemSlotCapacity || 4;
         this.deck = data.deck || this.createStarterDeck();
         this.discoveredCombos = data.discoveredCombos || [];
         this.map.floor = data.floor || 1;
@@ -904,6 +1115,7 @@ class Game {
         view: this.view,
         gold: this.gold,
         items: this.items,
+        itemSlotCapacity: this.getItemSlotCapacity(),
         deck: this.deck,
         discoveredCombos: this.discoveredCombos,
         floor: this.map.floor,
@@ -951,6 +1163,8 @@ class Game {
       const data = JSON.parse(raw);
       if (data && Array.isArray(data.cards)) this.unlockedCards = data.cards;
       if (data && Array.isArray(data.items)) this.unlockedItems = data.items;
+      if (data && typeof data.maxDifficultyUnlocked === "number") this.maxDifficultyUnlocked = Math.max(1, Math.floor(data.maxDifficultyUnlocked));
+      if (data && Array.isArray(data.difficultiesCompleted)) this.difficultiesCompleted = data.difficultiesCompleted.map(n => Math.floor(n)).filter(n => n >= 1);
     } catch (_) {}
   }
 
@@ -959,6 +1173,8 @@ class Game {
       localStorage.setItem("cityHeroUnlocks", JSON.stringify({
         cards: this.unlockedCards || [],
         items: this.unlockedItems || [],
+        maxDifficultyUnlocked: this.maxDifficultyUnlocked || 1,
+        difficultiesCompleted: this.difficultiesCompleted || [],
       }));
     } catch (_) {}
   }
@@ -1186,6 +1402,68 @@ class Game {
     if (closeBtn) {
       closeBtn.onclick = () => modal.classList.add('hidden');
     }
+
+    // 测试工具：清理本地存储（避免测试期间持久化干扰）
+    if (!this._settingsResetBound) {
+      this._settingsResetBound = true;
+      const btnSaves = document.getElementById("btn-reset-saves");
+      const btnUnlocks = document.getElementById("btn-reset-unlocks");
+      const btnAll = document.getElementById("btn-reset-all");
+
+      const ask = (title, msg, fn) => {
+        // 用原生 confirm，避免再套一层 modal
+        const ok = window.confirm(`${title}\n\n${msg}`);
+        if (!ok) return;
+        try { fn(); } catch (_) {}
+        try { location.reload(); } catch (_) {}
+      };
+
+      if (btnSaves) {
+        btnSaves.onclick = () => ask(
+          "清空存档",
+          "将删除 3 个存档位（以及旧单槽存档）。\n不会影响职业/难度解锁与成就。",
+          () => this.resetLocalSaves()
+        );
+      }
+      if (btnUnlocks) {
+        btnUnlocks.onclick = () => ask(
+          "重置解锁/难度",
+          "将重置职业解锁、卡牌/道具解锁、难度解锁进度。\n不会删除存档（但旧存档可能因此不匹配新规则）。",
+          () => this.resetLocalUnlocksAndDifficulty()
+        );
+      }
+      if (btnAll) {
+        btnAll.onclick = () => ask(
+          "全清（推荐）",
+          "将清空：存档、解锁/难度、成就、统计、已发现组合。\n用于从0开始测试完整流程。",
+          () => this.resetLocalAll()
+        );
+      }
+    }
+  }
+
+  // ===== 测试工具：清理本地存储 =====
+  resetLocalSaves() {
+    ["cityHeroSaveSlot1", "cityHeroSaveSlot2", "cityHeroSaveSlot3", "cityHeroSave"].forEach((k) => {
+      try { localStorage.removeItem(k); } catch (_) {}
+    });
+  }
+
+  resetLocalUnlocksAndDifficulty() {
+    ["cityHeroUnlockedProfessions", "cityHeroUnlocks"].forEach((k) => {
+      try { localStorage.removeItem(k); } catch (_) {}
+    });
+  }
+
+  resetLocalAll() {
+    [
+      "cityHeroSaveSlot1", "cityHeroSaveSlot2", "cityHeroSaveSlot3", "cityHeroSave",
+      "cityHeroUnlockedProfessions", "cityHeroUnlocks",
+      "cityHeroStats", "cityHeroAchievements",
+      "discoveredCombos"
+    ].forEach((k) => {
+      try { localStorage.removeItem(k); } catch (_) {}
+    });
   }
 
   // 开始第一场战斗
@@ -1196,17 +1474,19 @@ class Game {
     // 固定手牌：起手只有 1 张拳头，通过“换牌”教学换出第 2 张拳头，再讲解牌型
     this._tutorialFixedHand = [
       "hooligan_punch",
-      "dog_bark",
-      "dog_bark",
-      "dog_bite",
+      "hooligan_kick",
+      "hooligan_intimidate",
       "attack",
-      "block",
+      "attack",
       "potion",
+      "block",
     ];
-    this._tutorialFixedPickIndices = [0, 1, 2, 3, 5]; // 换牌后会有 2 拳头 + 若干狗牌与格挡
+    // 教学：固定自动出牌索引（换牌后会有 2 张拳头 + 若干流氓/通用牌）
+    this._tutorialFixedPickIndices = [0, 1, 2, 3, 4];
     this._tutorialSwapPool = ["hooligan_punch"];
 
     const firstEnemy = {
+      id: "dummy",
       name: '训练假人',
       hp: 130,
       atk: 4,
@@ -1216,6 +1496,7 @@ class Game {
     };
     
     this.enemy = {
+      id: firstEnemy.id,
       name: firstEnemy.name,
       hp: firstEnemy.hp,
       maxHp: firstEnemy.hp,
@@ -1239,6 +1520,7 @@ class Game {
     // 更新状态显示
     this.updateGoldDisplay();
     this.updateEnemyHP(this.enemy.hp);
+    this.renderEnemySprite();
     this.renderItems();
     
     // 更新队友UI
@@ -1260,7 +1542,7 @@ class Game {
         if (Array.isArray(list) && list.length > 0) this.unlockedProfessions = list;
       }
     } catch (e) {
-      this.unlockedProfessions = ["coder", "dog", "hooligan"];
+      this.unlockedProfessions = ["hooligan"];
     }
   }
 
@@ -1466,7 +1748,7 @@ class Game {
       
       // 尝试渲染像素角色
       if (window.pixelRenderer && window.PIXEL_CHARS && window.PIXEL_CHARS[info.pixel]) {
-        const sprite = window.pixelRenderer.createAnimatedSprite(info.pixel, 1.6, 3);
+        const sprite = window.pixelRenderer.createAnimatedSprite(info.pixel, 1.15, 3);
         if (sprite) {
           iconContainer.innerHTML = '';
           iconContainer.appendChild(sprite);
@@ -1487,8 +1769,22 @@ class Game {
       
       const hpContainer = document.createElement("div");
       hpContainer.className = "teammate-hp";
-      hpContainer.innerHTML = `<div class="hp-mini" id="${prof}-hp">--/--</div>`;
+      hpContainer.innerHTML = `
+        <div class="hp-bar-wrap" title="生命值">
+          <div class="hp-bar-fill" id="${prof}-hp-bar"></div>
+          <div class="hp-bar-bg"></div>
+        </div>
+        <div class="hp-text" id="${prof}-hp">--/--</div>
+      `;
       slot.appendChild(hpContainer);
+
+      const debuffContainer = document.createElement("div");
+      debuffContainer.className = "teammate-debuffs";
+      debuffContainer.innerHTML = `
+        <span class="debuff-badge poison" id="${prof}-poison-badge" title="中毒">☠️ <span id="${prof}-poison-val">0</span></span>
+        <span class="debuff-badge burn" id="${prof}-burn-badge" title="灼烧">🔥 <span id="${prof}-burn-val">0</span></span>
+      `;
+      slot.appendChild(debuffContainer);
       
       const shieldContainer = document.createElement("div");
       shieldContainer.className = "teammate-shield";
@@ -1524,11 +1820,48 @@ class Game {
       try {
         const parsed = JSON.parse(data);
         if (parsed.type === "heal" && typeof parsed.index === "number") {
-          this.bindHealTarget(parsed.index, prof);
+          // 这里的 index 是“手牌索引”。治疗目标绑定必须落在“出牌区索引”上，否则结算时读不到。
+          const handIndex = parsed.index;
+          if (!this.battle) return;
+          const hand = this.battle.hand || [];
+          const cardId = hand[handIndex];
+          const card = cardId ? CARDS_DB[cardId] : null;
+          if (!card || !card.heal || card.healAll) return;
+
+          // 直接把这张治疗牌打到出牌区，然后按出牌区索引绑定目标
+          const beforeLen = (this.battle.playedCards || []).length;
+          const ok = this.battle.playCardToArea(handIndex);
+          if (!ok) return;
+          const playedIdx = ((this.battle.playedCards || []).length - 1);
+          if (playedIdx < 0 || playedIdx < beforeLen) return;
+
+          this.bindHealTarget(playedIdx, prof, { source: "played" });
+          this.renderHand(this.battle.hand);
+          this.renderPlayedArea(this.battle.playedCards);
+          this.updateEstimatedDamage();
+          this.updatePlayedCount();
+        }
+        // 出牌区内的治疗牌：拖到队友头像即可绑定目标（不移动卡）
+        if (parsed.type === "heal-played" && typeof parsed.playedIndex === "number") {
+          this.bindHealTarget(parsed.playedIndex, prof, { source: "played-drag" });
+          this.renderHealMarkers();
+          this.renderPlayedArea(this.battle?.playedCards || []);
         }
       } catch {
         // ignore
       }
+    });
+
+    // 点击队友头像：用于“出牌区治疗牌 -> 选目标模式”
+    slot.addEventListener("click", () => {
+      try {
+        const idx = this._pendingHealPlayedIndex;
+        if (typeof idx !== "number") return;
+        this.bindHealTarget(idx, prof, { source: "played-click" });
+        this._pendingHealPlayedIndex = null;
+        this.renderHealMarkers();
+        this.renderPlayedArea(this.battle?.playedCards || []);
+      } catch (_) {}
     });
   }
 
@@ -1617,6 +1950,8 @@ class Game {
       slot.classList.add("hidden");
       if (sidebar && dmg.parentElement !== sidebar) sidebar.insertBefore(dmg, sidebar.querySelector("#damage-breakdown-tooltip") || null);
     }
+    // 伤害框可能被移动，确保悬停明细已绑定
+    try { this.bindDamageBreakdownTooltip(); } catch (_) {}
   }
 
   renderMap() {
@@ -1922,17 +2257,46 @@ class Game {
       if (items.upgrades.length >= 6) break;
     }
     
-    // 随机生成道具
+    // 随机生成道具（价格按稀有度落在设计文档区间）
     const itemPool = Object.keys(ITEMS_DB).filter((id) => this.isItemUnlocked(id));
     for (let i = 0; i < 2; i++) {
       const itemId = itemPool[Math.floor(Math.random() * itemPool.length)];
       const item = ITEMS_DB[itemId];
+      const rarity = item.rarity || "common";
+      let minPrice = 80;
+      let maxPrice = 120;
+      if (rarity === "rare") {
+        minPrice = 120;
+        maxPrice = 180;
+      } else if (rarity === "epic") {
+        minPrice = 250;
+        maxPrice = 350;
+      } else if (rarity === "legendary") {
+        minPrice = 450;
+        maxPrice = 600;
+      }
+      const cost = minPrice + Math.floor(Math.random() * (maxPrice - minPrice + 1));
       items.shopItems.push({
         id: itemId,
         name: item.name,
         icon: item.icon,
-        cost: 80 + Math.floor(Math.random() * 40),
-        rarity: item.rarity || "common"
+        cost,
+        rarity
+      });
+    }
+
+    // 随机出售：道具栏扩展（一次购买，立刻生效）
+    // 概率不宜过高，避免每家店都刷出
+    if (Math.random() < 0.35) {
+      const curCap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 4;
+      const cost = 120 + Math.max(0, curCap - 4) * 60;
+      items.shopItems.push({
+        kind: "item_slot_upgrade",
+        id: "item_slot_upgrade",
+        name: "道具栏扩展",
+        icon: "🎒",
+        cost,
+        rarity: "rare"
       });
     }
     
@@ -2031,8 +2395,9 @@ class Game {
     const itemsEl = document.getElementById("shop-items");
     itemsEl.innerHTML = "";
     this.shopItems.shopItems.forEach((item, idx) => {
-      const itemData = ITEMS_DB[item.id];
-      if (!itemData) return;
+      const isSlotUpgrade = item.kind === "item_slot_upgrade";
+      const itemData = isSlotUpgrade ? null : ITEMS_DB[item.id];
+      if (!isSlotUpgrade && !itemData) return;
       
       const el = document.createElement("div");
       el.className = `shop-item ${item.rarity}`;
@@ -2042,15 +2407,19 @@ class Game {
         <div class="shop-item-cost">💰 ${item.cost}</div>
         <div class="shop-item-detail">
           <div class="shop-item-detail-header">
-            <span class="shop-item-detail-icon">${itemData.icon}</span>
-            <span class="shop-item-detail-name">${itemData.name}</span>
+            <span class="shop-item-detail-icon">${isSlotUpgrade ? "🎒" : itemData.icon}</span>
+            <span class="shop-item-detail-name">${isSlotUpgrade ? "道具栏扩展" : itemData.name}</span>
           </div>
-          <div class="shop-item-detail-desc">${itemData.description || ''}</div>
-          ${itemData.detail ? `<div class="shop-item-detail-effect">${itemData.detail}</div>` : ''}
+          <div class="shop-item-detail-desc">${isSlotUpgrade ? "永久增加 1 个道具槽位（立即生效）" : (itemData.description || '')}</div>
+          ${isSlotUpgrade ? `<div class="shop-item-detail-effect">（可叠加）</div>` : (itemData.detail ? `<div class="shop-item-detail-effect">${itemData.detail}</div>` : '')}
         </div>
       `;
       el.addEventListener("click", () => this.buyItem(idx));
-      this.bindShopItemTooltip(el, itemData.name, itemData.description, itemData.detail);
+      if (isSlotUpgrade) {
+        this.bindShopItemTooltip(el, "道具栏扩展", "永久增加 1 个道具槽位（立即生效）", "（可叠加）");
+      } else {
+        this.bindShopItemTooltip(el, itemData.name, itemData.description, itemData.detail);
+      }
       itemsEl.appendChild(el);
     });
     
@@ -2132,8 +2501,21 @@ class Game {
       return;
     }
 
+    // 商店特殊商品：道具栏扩展（非可装备道具）
+    if (item.kind === "item_slot_upgrade") {
+      this.gold -= item.cost;
+      this.shopItems.shopItems.splice(idx, 1);
+      this.refreshShopUI();
+      this.updateGoldDisplay();
+      if (window.audioManager) window.audioManager.shopBuy();
+      if (typeof this.increaseItemSlotCapacity === "function") this.increaseItemSlotCapacity(1);
+      this.log(`购买：道具栏扩展（当前 ${this.getItemSlotCapacity()} 格）`, "player");
+      return;
+    }
+
     // 道具栏满：允许直接选择替换槽位
-    if (this.items.length >= 4) {
+    const cap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 4;
+    if (this.items.length >= cap) {
       this.openShopReplaceItemModal(item, idx);
       return;
     }
@@ -2164,7 +2546,8 @@ class Game {
     if (desc) desc.textContent = `购买 ${itemData ? `${itemData.icon} ${itemData.name}` : shopItem.name}（💰 ${shopItem.cost}），请选择要替换的道具：`;
 
     slots.innerHTML = "";
-    for (let i = 0; i < 4; i++) {
+    const cap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 4;
+    for (let i = 0; i < cap; i++) {
       const curId = this.items[i];
       const cur = curId && typeof ITEMS_DB !== "undefined" ? ITEMS_DB[curId] : null;
       const btn = document.createElement("button");
@@ -2241,6 +2624,7 @@ class Game {
   showCombosView() {
     const combosView = document.getElementById("combos-view");
     const rulesBaseList = document.getElementById("rules-base-list");
+    const rulesHint = document.getElementById("rules-base-hint");
     const rulesCodeText = document.getElementById("rules-code-text");
     const rulesShieldText = document.getElementById("rules-shield-text");
     const combosList = document.getElementById("combos-list");
@@ -2257,6 +2641,10 @@ class Game {
         row.innerHTML = `<span class="rule-name">${r.name}</span><span class="rule-desc">${r.rule}</span>`;
         rulesBaseList.appendChild(row);
       });
+    }
+    // 基础规则提示（避免误解：通用牌是否计入）
+    if (rulesHint) {
+      rulesHint.textContent = "提示：通用牌（标记为「通」）不计入牌型统计，只用于补位/触发自身效果。";
     }
 
     // 2. 程序员代码牌规则
@@ -2511,6 +2899,7 @@ class Game {
     
     // 构建新的敌人状态（重置上一场战斗遗留的 debuff）
     this.enemy = {
+      id: enemyData.id || enemyData.enemyId || enemyData.key || null,
       name: enemyData.name,
       hp: enemyData.hp,
       maxHp: enemyData.hp,
@@ -2539,6 +2928,7 @@ class Game {
 
     // 先用新敌人状态刷新一次血量/意图 UI，避免看到上一只怪的 0 血和 debuff
     this.updateEnemyHP(this.enemy.hp);
+    this.renderEnemySprite();
 
     this.renderItems();
     this.showBattleView();
@@ -2549,6 +2939,11 @@ class Game {
   applyDamageToTeammate(profession, damage, opts = {}) {
     const t = this.teammates && this.teammates[profession];
     if (!t || t.hp <= 0) return 0;
+    const damageType = opts.damageType || "direct";
+    // 先播放受伤特效，再结算伤害（让玩家先看到特效，再看到血条/ debuff 变化）
+    if (this.effects && typeof this.effects.playerDamageEffect === "function") {
+      this.effects.playerDamageEffect(profession, damageType);
+    }
     let remaining = Math.max(0, Math.floor(damage || 0));
     const ignoreShield = !!opts.ignoreShield;
     const shieldFactor = typeof opts.shieldFactor === "number" ? opts.shieldFactor : 1.0; // 0.5 = 护盾减免只有 50% 效率
@@ -2598,33 +2993,34 @@ class Game {
       if (!t || t.hp <= 0) return;
       const cur = t[kind] || 0;
       t[kind] = Math.min(maxCap, cur + amount);
+      if (this.effects && this.effects.playerDebuffEffect) {
+        this.effects.playerDebuffEffect(p, kind);
+      }
     });
     professions.forEach((p) => this.updateTeammateStatus(p));
   }
 
   applyDotsAtStartOfTurn() {
     const professions = this.selectedProfessions || [];
-    // 中毒：无视护盾
     let poisonTotal = 0;
     professions.forEach((p) => {
       const t = this.teammates[p];
       if (!t || t.hp <= 0) return;
       const poison = t.poison || 0;
       if (poison > 0) {
-        const dealt = this.applyDamageToTeammate(p, poison, { ignoreShield: true });
+        const dealt = this.applyDamageToTeammate(p, poison, { ignoreShield: true, damageType: "poison" });
         poisonTotal += dealt;
       }
     });
     if (poisonTotal > 0) this.log(`☠️ 中毒结算：全队共受到 ${poisonTotal} 伤害（无视护盾）`, "enemy");
 
-    // 灼烧：护盾只有 50% 效率；每回合消耗 12 层
     let burnTotal = 0;
     professions.forEach((p) => {
       const t = this.teammates[p];
       if (!t || t.hp <= 0) return;
       const burn = t.burn || 0;
       if (burn > 0) {
-        const dealt = this.applyDamageToTeammate(p, burn, { shieldFactor: 0.5 });
+        const dealt = this.applyDamageToTeammate(p, burn, { shieldFactor: 0.5, damageType: "burn" });
         burnTotal += dealt;
         t.burn = Math.max(0, burn - 12);
       }
@@ -2671,18 +3067,44 @@ class Game {
         if (currentNode && currentNode.type === "boss") {
           this.unlockAchievement('first_boss');
           this.incStat("bossesDefeated", 1);
-          if (this.map.floor === 2 && !this.unlockedProfessions.includes("teacher")) {
+          // 每通关一大关（击败该层 Boss）：道具栏容量 +1
+          try { this.increaseItemSlotCapacity(1); } catch (_) {}
+          // 难度1：第1关（第1层 Boss）通关 → 解锁狗，并回到队伍选择
+          if ((this.difficulty || 1) === 1 && this.map.floor === 1 && !this.unlockedProfessions.includes("dog")) {
+            this.unlockedProfessions.push("dog");
+            this.saveUnlockedProfessions();
+            // 给狗新增一张解毒牌做为机制对策（永久加入解锁卡池/牌库展示）
+            if (!this.deck.includes("dog_detox")) this.deck.push("dog_detox");
+            this.log("解锁新职业：狗 🐕（获得新卡：解毒/守护气息）", "combo");
+            this.showProfessionUnlockModal("dog");
+            this._flashUnlockedProfession = "dog";
+            this.pendingTeamBuildAfterBoss = true;
+          }
+          // 难度1：第2关（第2层 Boss）通关 → 解锁老师
+          if ((this.difficulty || 1) === 1 && this.map.floor === 2 && !this.unlockedProfessions.includes("teacher")) {
             this.unlockedProfessions.push("teacher");
             this.saveUnlockedProfessions();
             this.log("解锁新职业：老师！", "combo");
+            this.showProfessionUnlockModal("teacher");
+            this._flashUnlockedProfession = "teacher";
           }
           if (this.map.nextFloor()) {
             this.log(`进入第 ${this.map.floor} 层！`, "system");
             this.updateFloorDisplay();
             this.map.generate();
+            // 进入下一大关前：强制回组队页面（允许重新组队/加入新职业）
+            this.pendingTeamBuildAfterBoss = true;
           } else {
             this.unlockAchievement("floor5");
             this.showModal("恭喜通关！", "你成功击败了所有敌人！");
+            // 通关当前难度：解锁下一难度
+            try {
+              const d = Math.max(1, Math.floor(this.difficulty || 1));
+              if (!Array.isArray(this.difficultiesCompleted)) this.difficultiesCompleted = [];
+              if (!this.difficultiesCompleted.includes(d)) this.difficultiesCompleted.push(d);
+              this.maxDifficultyUnlocked = Math.max(this.maxDifficultyUnlocked || 1, d + 1);
+              this.saveUnlocks();
+            } catch (_) {}
             return;
           }
         }
@@ -2866,6 +3288,12 @@ class Game {
       this.justFinishedFirstBattle = false;
       this.log("欢迎来到城市！选择你的路线开始冒险", "system");
     }
+    if (this.pendingTeamBuildAfterBoss) {
+      this.pendingTeamBuildAfterBoss = false;
+      // 通关大关后先回到队伍选择，让新解锁职业可加入队伍
+      this.showTeamBuildView();
+      return;
+    }
     this.showMapView();
   }
 
@@ -2890,6 +3318,8 @@ class Game {
         deck.push("dog_bark");
         deck.push("dog_bite");
         deck.push("dog_tail");
+        deck.push("dog_guard");
+        deck.push("dog_detox");
         deck.push("dog_fetch");
       } else if (prof === "teacher") {
         // 老师：控制+削弱
@@ -2942,8 +3372,24 @@ class Game {
           badge.className = "card-badge";
           const icon = bind.kind === "potion" ? "🧪" : "💚";
           badge.textContent = `${icon}${bind.tag}`;
+          // 右上角流派角标占位：把功能 badge 下移，避免遮挡
+          if (cardEl.querySelector(".card-archetype-badge")) badge.style.top = "28px";
           cardEl.appendChild(badge);
         }
+
+        // Boss2 手牌中毒：显示毒层（跨回合保留）
+        try {
+          const p = this.battle && Array.isArray(this.battle.handPoisons) ? (this.battle.handPoisons[i] || 0) : 0;
+          if (p > 0) {
+            const badge = document.createElement("div");
+            badge.className = "card-badge";
+            badge.textContent = `☠${p}`;
+            badge.title = "中毒手牌：打出该牌会反噬我方中毒（换牌丢弃则不会触发）";
+            // 右上角流派角标占位：把功能 badge 下移，避免遮挡
+            if (cardEl.querySelector(".card-archetype-badge")) badge.style.top = "28px";
+            cardEl.appendChild(badge);
+          }
+        } catch (_) {}
         container.appendChild(cardEl);
       }
     }
@@ -3004,21 +3450,24 @@ class Game {
   // 渲染道具（含悬停显示效果）
   renderItems() {
     const tooltipEl = document.getElementById("item-tooltip");
-    for (let i = 0; i < 4; i++) {
-      const slot = document.getElementById(`item-${i}`);
-      if (!slot) continue;
+    const wrap = document.getElementById("item-slots");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    const cap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 4;
+    for (let i = 0; i < cap; i++) {
+      const slot = document.createElement("div");
+      slot.className = "item-slot";
+      slot.id = `item-${i}`;
       const itemId = this.items[i];
       slot.dataset.itemId = itemId || "";
-      slot.innerHTML = "";
       if (itemId) {
         const itemEl = ItemUtil.createItemElement(itemId);
         if (itemEl) slot.appendChild(itemEl);
       }
-      slot.onmouseenter = null;
-      slot.onmouseleave = null;
+
       if (itemId && typeof ITEMS_DB !== "undefined" && ITEMS_DB[itemId]) {
         const item = ITEMS_DB[itemId];
-        slot.onmouseenter = (e) => {
+        slot.onmouseenter = () => {
           if (!tooltipEl) return;
           tooltipEl.innerHTML = `
             <div class="item-tooltip-name">${item.icon} ${item.name}</div>
@@ -3035,6 +3484,7 @@ class Game {
           if (tooltipEl) tooltipEl.classList.add("hidden");
         };
       }
+      wrap.appendChild(slot);
     }
   }
 
@@ -3082,12 +3532,15 @@ class Game {
       if (boxEl) {
         boxEl.classList.add("damage-tier-" + tier);
         boxEl.dataset.damageBreakdown = this.buildDamageBreakdownText(comboInfo, baseDamage, finalMultiplier, total, codeDmg);
+        // 兜底：确保悬停提示始终有绑定（避免布局/DOM移动导致失效）
+        try { this.bindDamageBreakdownTooltip(); } catch (_) {}
       }
     } else {
       turnEl.textContent = "0 × 1.0 = 0";
       if (boxEl) {
         boxEl.classList.add("damage-tier-0");
         boxEl.dataset.damageBreakdown = "";
+        try { this.bindDamageBreakdownTooltip(); } catch (_) {}
       }
     }
   }
@@ -3153,10 +3606,12 @@ class Game {
     if (!card) return 0;
     const level = typeof this.getCardLevel === "function" ? this.getCardLevel(cardId) : 1;
     const damageMult = 1 + (level - 1) * 0.5;
-    return Math.floor((card.damage || 0) * damageMult);
+    const base = Math.floor((card.damage || 0) * damageMult);
+    const hits = Math.max(1, Math.floor(card.hitCount || 1));
+    return base * hits;
   }
 
-  // 快捷键：从手牌中自动选出“预计伤害最高”的 5 张（考虑隐藏组合/代码组合）
+  // 快捷键：从手牌中自动选出“预计伤害最高”的一组牌（数量受出牌上限影响，考虑隐藏组合/代码组合）
   quickPickBestFiveFromHand() {
     const battle = this.battle;
     if (!battle || this.gameEnded) return;
@@ -3220,8 +3675,9 @@ class Game {
       if (uniq.length >= 16) break;
     }
 
-    const maxK = Math.min(5, uniq.length);
-    const gameState = { discoveredCombos: this.discoveredCombos || [] };
+    const playedLimit = this.getPlayedLimit ? this.getPlayedLimit() : 5;
+    const maxK = Math.min(playedLimit, uniq.length);
+    const gameState = { discoveredCombos: this.discoveredCombos || [], items: this.items || [] };
     let best = { dmg: -1, indices: [] };
 
     // 枚举组合（最多 16 选 5 = 4368，足够快）
@@ -3235,6 +3691,8 @@ class Game {
           return {
             id: cardId,
             profession: card.profession || "common",
+            archetype: (card && (card.archetype || card.type)) || "attack",
+            bleed: Math.max(0, Math.floor((card && card.bleed) || 0)),
             baseDamage: this.getCardBaseDamageForCalc(cardId),
           };
         });
@@ -3320,6 +3778,8 @@ class Game {
       played.push({
         id: cardId,
         profession,
+        archetype: card.archetype || card.type || "attack",
+        bleed: Math.max(0, Math.floor(card.bleed || 0)),
         baseDamage: Math.floor((card.damage || 0) * damageMult),
       });
     }
@@ -3327,7 +3787,7 @@ class Game {
       this.updateTurnDamage(0, null, null, false, null);
       return;
     }
-    const gameState = { discoveredCombos: this.discoveredCombos || [] };
+    const gameState = { discoveredCombos: this.discoveredCombos || [], items: this.items || [] };
     const result = typeof evaluateCombo === "function" ? evaluateCombo(played, gameState) : null;
     if (result) {
       const comboInfo = {
@@ -3358,26 +3818,59 @@ class Game {
     const container = document.getElementById("played-container");
     if (!container) return;
     container.innerHTML = "";
-    if (!playedCards || playedCards.length === 0) {
-      if (typeof this.updatePlayedCount === "function") this.updatePlayedCount();
-      return;
+    const slots = this.getPlayedSlotCount ? this.getPlayedSlotCount() : 5;
+    const brokenTurns = this.getBrokenPlayedSlotTurns ? this.getBrokenPlayedSlotTurns() : new Map();
+    const broken = new Set(Array.from(brokenTurns.keys()));
+    const played = (this.battle && Array.isArray(this.battle.playedCards)) ? this.battle.playedCards : (playedCards || []);
+    const playedSlots = (this.battle && Array.isArray(this.battle.playedSlots)) ? this.battle.playedSlots : [];
+
+    // 空槽位（用于“破坏格子”视觉与规则一致）
+    for (let s = 0; s < slots; s++) {
+      const slotEl = document.createElement("div");
+      slotEl.className = "played-slot" + (broken.has(s) ? " broken" : "");
+      slotEl.dataset.slotIndex = String(s);
+      if (brokenTurns.has(s)) slotEl.dataset.brokenTurns = String(brokenTurns.get(s));
+      container.appendChild(slotEl);
     }
-    playedCards.forEach((cardId, i) => {
-      const card = CARDS_DB[cardId];
+
+    // 把牌放入各自槽位
+    for (let i = 0; i < played.length; i++) {
+      const cardId = played[i];
+      const slotIdx = Number.isFinite(playedSlots[i]) ? playedSlots[i] : i;
+      const targetSlot = container.querySelector(`.played-slot[data-slot-index="${slotIdx}"]`);
       const cardEl = CardUtil.createCardElement(cardId, i);
-      if (!cardEl) return;
+      if (!cardEl || !targetSlot) continue;
       cardEl.dataset.playedIndex = String(i);
-      cardEl.draggable = false;
-      cardEl.addEventListener("click", () => {
-        if (this.gameEnded || !this.battle) return;
-        this.battle.unplayCardFromArea(i);
-        this.renderHand(this.battle.hand);
-        this.renderPlayedArea(this.battle.playedCards);
-        this.updateEstimatedDamage();
-        this.updatePlayedCount();
-      });
-      container.appendChild(cardEl);
-    });
+      const card = CARDS_DB[cardId];
+      const isHeal = !!(card && card.heal && !card.healAll);
+      // 治疗牌：允许“拖到队友头像/点击选目标”；其他牌：点击收回手牌
+      if (isHeal) {
+        cardEl.draggable = true;
+        cardEl.title = (cardEl.title || "") + "\n（拖到队友头像选择目标 / 点击进入选目标模式）";
+        cardEl.addEventListener("dragstart", (e) => {
+          try {
+            e.dataTransfer.setData("text/plain", JSON.stringify({ type: "heal-played", playedIndex: i }));
+          } catch (_) {}
+        });
+        cardEl.addEventListener("click", () => {
+          if (this.gameEnded || !this.battle) return;
+          this._pendingHealPlayedIndex = i;
+          this.showComboText("选择治疗目标：点击队友头像");
+        });
+      } else {
+        cardEl.draggable = false;
+        cardEl.addEventListener("click", () => {
+          if (this.gameEnded || !this.battle) return;
+          this.battle.unplayCardFromArea(i);
+          this.renderHand(this.battle.hand);
+          this.renderPlayedArea(this.battle.playedCards);
+          this.updateEstimatedDamage();
+          this.updatePlayedCount();
+        });
+      }
+      targetSlot.appendChild(cardEl);
+    }
+
     if (!container.dataset.dropBound) {
       container.dataset.dropBound = "1";
       container.addEventListener("dragover", (e) => {
@@ -3407,14 +3900,78 @@ class Game {
     this.updatePlayedCount();
   }
 
-  // 敌人血量
+  // 敌人血量与名称/层数
   updateEnemyHP(hp) {
+    if (!this.enemy) return;
+    const nameEl = document.getElementById("enemy-name");
+    if (nameEl) nameEl.textContent = this.enemy.name || "敌人";
+    const layerEl = document.getElementById("enemy-layer");
+    if (layerEl && this.map) {
+      const floor = this.map.floor || 1;
+      layerEl.textContent = `第 ${floor} 层`;
+    }
     const maxHp = this.enemy.maxHp;
-    const percent = (hp / maxHp) * 100;
-    document.getElementById("enemy-hp-fill").style.width = `${Math.max(0, percent)}%`;
-    document.getElementById("enemy-hp-current").textContent = Math.max(0, Math.floor(hp));
-    document.getElementById("enemy-hp-max").textContent = maxHp;
+    const percent = maxHp > 0 ? (hp / maxHp) * 100 : 0;
+    const fillEl = document.getElementById("enemy-hp-fill");
+    if (fillEl) fillEl.style.width = `${Math.max(0, percent)}%`;
+    const curEl = document.getElementById("enemy-hp-current");
+    if (curEl) curEl.textContent = Math.max(0, Math.floor(hp));
+    const maxEl = document.getElementById("enemy-hp-max");
+    if (maxEl) maxEl.textContent = maxHp;
     this.updateEnemyDebuffsAndIntent();
+  }
+
+  renderEnemySprite() {
+    try {
+      const wrap = document.getElementById("enemy-sprite");
+      if (!wrap) return;
+      wrap.innerHTML = "";
+      if (!this.enemy || !window.pixelRenderer) return;
+
+      const id = this.enemy.id || "";
+      const ai = this.enemy.aiType || "";
+      const hasEnemy = (k) => (window.PIXEL_ENEMIES && window.PIXEL_ENEMIES[k]) || false;
+      const key =
+        (id && hasEnemy(id) ? id : null) ||
+        (ai === "boss1" ? "boss" : null) ||
+        (String(id).startsWith("boss_") ? "boss" : null) ||
+        "thug";
+
+      const sprite = window.pixelRenderer.createAnimatedSprite(key, 1.55, 3);
+      if (sprite) wrap.appendChild(sprite);
+    } catch (_) {}
+  }
+
+  // 敌人血量演出：平滑过渡（不重复刷新 debuff/意图，避免卡顿）
+  animateEnemyHP(fromHp, toHp, durationMs = 900) {
+    if (!this.enemy) return Promise.resolve();
+    const start = Math.max(0, Number(fromHp) || 0);
+    const end = Math.max(0, Number(toHp) || 0);
+    const dur = Math.max(120, Math.floor(durationMs || 900));
+    const token = (this._enemyHpAnimToken || 0) + 1;
+    this._enemyHpAnimToken = token;
+
+    const maxHp = this.enemy.maxHp || 1;
+    const fillEl = document.getElementById("enemy-hp-fill");
+    const curEl = document.getElementById("enemy-hp-current");
+    const maxEl = document.getElementById("enemy-hp-max");
+    if (maxEl) maxEl.textContent = maxHp;
+
+    const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+    const t0 = performance.now();
+    return new Promise((resolve) => {
+      const step = (now) => {
+        if (this._enemyHpAnimToken !== token) return resolve();
+        const t = Math.min(1, (now - t0) / dur);
+        const v = start + (end - start) * easeOut(t);
+        const percent = maxHp > 0 ? (v / maxHp) * 100 : 0;
+        if (fillEl) fillEl.style.width = `${Math.max(0, percent)}%`;
+        if (curEl) curEl.textContent = Math.max(0, Math.floor(v));
+        if (t >= 1) return resolve();
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
   }
 
   // 更新敌人 debuff 显示与意图
@@ -3425,35 +3982,73 @@ class Game {
     const intentEl = document.getElementById("enemy-intent");
     if (debuffsEl) {
       const badges = [];
-      if ((enemy.stunned || 0) > 0) badges.push(`<span class="debuff-badge stun" title="眩晕">✨ ${enemy.stunned}</span>`);
-      if ((enemy.slow || 0) > 0) badges.push(`<span class="debuff-badge slow" title="减速">🐢 ${enemy.slow}</span>`);
-      if ((enemy.weakness || 0) > 0) badges.push(`<span class="debuff-badge weakness" title="虚弱">💔 ${enemy.weakness}</span>`);
-      if ((enemy.blind || 0) > 0) badges.push(`<span class="debuff-badge blind" title="致盲">👁 ${enemy.blind}</span>`);
+      if ((enemy.stunned || 0) > 0) badges.push(`<span class="debuff-badge stun" title="眩晕：敌人下回合无法行动。剩余 ${enemy.stunned} 回合">✨ ${enemy.stunned}</span>`);
+      if ((enemy.slow || 0) > 0) badges.push(`<span class="debuff-badge slow" title="减速：敌人伤害 -40%。剩余 ${enemy.slow} 回合">🐢 ${enemy.slow}</span>`);
+      if ((enemy.weakness || 0) > 0) badges.push(`<span class="debuff-badge weakness" title="虚弱：敌人伤害 -50%。剩余 ${enemy.weakness} 回合">💔 ${enemy.weakness}</span>`);
+      if ((enemy.blind || 0) > 0) badges.push(`<span class="debuff-badge blind" title="致盲：敌人命中率每层 -20%（最低 5%）。剩余 ${enemy.blind} 回合">👁 ${enemy.blind}</span>`);
+      if ((enemy.bleed || 0) > 0) badges.push(`<span class="debuff-badge bleed" title="流血：敌人回合开始受到等同层数的伤害，并每回合 -1 衰减。当前 ${enemy.bleed}">🩸 ${enemy.bleed}</span>`);
       debuffsEl.innerHTML = badges.length ? badges.join("") : "";
       debuffsEl.classList.toggle("hidden", !badges.length);
+      // 让玩家“看见”状态生效：闪一下
+      try {
+        debuffsEl.classList.remove("debuff-flash");
+        void debuffsEl.offsetWidth;
+        debuffsEl.classList.add("debuff-flash");
+        setTimeout(() => debuffsEl.classList.remove("debuff-flash"), 420);
+      } catch (_) {}
     }
     if (intentEl) {
+      const blind = Math.max(0, Math.floor(enemy.blind || 0));
+      const hitChance = Math.max(0.05, 1 - 0.2 * blind);
       if (enemy.intentText) {
-        intentEl.textContent = enemy.intentText;
+        // 若有自定义意图，也要在致盲时明确提示命中率变化（否则玩家“看不到效果”）
+        const t = String(enemy.intentText || "");
+        if (blind > 0 && !t.includes("命中")) {
+          intentEl.textContent = `${t}（命中 ${(hitChance * 100).toFixed(0)}%）`;
+        } else {
+          intentEl.textContent = t;
+        }
         return;
       }
       let dmg = enemy.atk || 10;
       if ((enemy.slow || 0) > 0) dmg = Math.floor(dmg * 0.6);
       if ((enemy.weakness || 0) > 0) dmg = Math.floor(dmg * 0.5);
-      if ((enemy.blind || 0) > 0) dmg = Math.floor(dmg * 0.7);
       const skip = (enemy.stunned || 0) > 0;
-      intentEl.textContent = skip ? "✨ 眩晕中，下回合无法行动" : `⚔️ 下回合：攻击 (${dmg} 伤害)`;
+      intentEl.textContent = skip
+        ? "✨ 眩晕中，下回合无法行动"
+        : `⚔️ 下回合：攻击 (${dmg} 伤害，命中 ${(hitChance * 100).toFixed(0)}%)`;
     }
   }
 
-  // 更新单个队友的生命 / 护盾显示
+  // 更新单个队友的生命 / 护盾 /  debuff 显示
   updateTeammateStatus(profession) {
     const t = this.teammates[profession];
     if (!t) return;
     const hpEl = document.getElementById(`${profession}-hp`);
     if (hpEl) hpEl.textContent = `${t.hp}/${t.maxHp}`;
+    const hpBarEl = document.getElementById(`${profession}-hp-bar`);
+    if (hpBarEl) {
+      const pct = t.maxHp > 0 ? Math.max(0, Math.min(100, (t.hp / t.maxHp) * 100)) : 0;
+      hpBarEl.style.width = `${pct}%`;
+      hpBarEl.classList.toggle("low", pct > 0 && pct <= 25);
+      hpBarEl.classList.toggle("mid", pct > 25 && pct <= 50);
+    }
     const shieldEl = document.getElementById(`${profession}-shield`);
     if (shieldEl) shieldEl.textContent = t.shield || 0;
+    const poisonBadge = document.getElementById(`${profession}-poison-badge`);
+    const poisonVal = document.getElementById(`${profession}-poison-val`);
+    if (poisonBadge && poisonVal) {
+      const v = t.poison || 0;
+      poisonVal.textContent = v;
+      poisonBadge.classList.toggle("hidden", v <= 0);
+    }
+    const burnBadge = document.getElementById(`${profession}-burn-badge`);
+    const burnVal = document.getElementById(`${profession}-burn-val`);
+    if (burnBadge && burnVal) {
+      const v = t.burn || 0;
+      burnVal.textContent = v;
+      burnBadge.classList.toggle("hidden", v <= 0);
+    }
   }
 
   // 伤害数字（瞬间提示，主显示在顶部 A×B=XXX 持久保留）
@@ -3468,68 +4063,43 @@ class Game {
   }
 
   // 连击文字
-  showComboText(text) {
+  showComboText(text, durationMs = 1500) {
     const overlay = document.getElementById("damage-overlay");
     overlay.innerHTML = `<div class="combo-text">${text}</div>`;
     overlay.classList.remove("hidden");
+    // 重要技能/警告类提示：自动延长显示时间，避免“一闪而过”
+    let duration = Math.max(300, Number(durationMs) || 1500);
+    try {
+      const importantPattern = /(Boss|boss|破坏牌型|点燃格子|下毒|蓄力预告|警告|预告|眩晕|群攻|精英|技能)/;
+      if (importantPattern.test(String(text)) && duration < 3200) {
+        duration = 3200;
+      }
+    } catch (_) {}
     setTimeout(() => {
       overlay.classList.add("hidden");
-    }, 1500);
+    }, duration);
   }
 
-  // 队伍受到伤害
-  takeDamage(damage) {
-    // 使用当前选择的职业列表；若异常则回退到已初始化的队友键
+  // 队伍受到伤害（单体，随机目标）
+  takeDamage(damage, opts = {}) {
     const professions =
       (Array.isArray(this.selectedProfessions) && this.selectedProfessions.length ? this.selectedProfessions : null) ||
       (this.teammates ? Object.keys(this.teammates) : []);
 
-    // 随机选择一个存活的队友
     const aliveProfessions = professions.filter((p) => {
       const t = this.teammates && this.teammates[p];
       return t && typeof t.hp === "number" && t.hp > 0;
     });
-    
     if (aliveProfessions.length === 0) {
-      // 防御性处理：若队友数据缺失，不要因为一次事件伤害直接判死
       this.log("未找到可受伤的队友（数据缺失），已忽略本次伤害。", "system");
       return;
     }
-    
     const target = aliveProfessions[Math.floor(Math.random() * aliveProfessions.length)];
-    const t = this.teammates[target];
-    if (!t) return;
-    
-    let remaining = damage;
-    if (t.shield > 0) {
-      const absorbed = Math.min(remaining, t.shield);
-      t.shield -= absorbed;
-      remaining -= absorbed;
-      if (absorbed > 0) {
-        this.log(
-          `${this.getProfessionLabel(target)}的护盾吸收了 ${absorbed} 点伤害`,
-          "player"
-        );
-      }
-    }
-    if (remaining > 0) {
-      t.hp = Math.max(0, t.hp - remaining);
-      this.log(
-        `${this.enemy.name} 对 ${this.getProfessionLabel(target)} 造成 ${remaining} 点伤害`,
-        "enemy"
-      );
-    }
-    this.updateTeammateStatus(target);
-    
-    // 播放受伤音效
-    if (window.audioManager) {
-      window.audioManager.damage();
-    }
-    
-    // 检查是否全灭
+    this.applyDamageToTeammate(target, damage, { ...opts, damageType: opts.damageType || "direct" });
+    if (window.audioManager) window.audioManager.damage();
     const stillAlive = professions.filter((p) => {
-      const teammate = this.teammates && this.teammates[p];
-      return teammate && typeof teammate.hp === "number" && teammate.hp > 0;
+      const tm = this.teammates && this.teammates[p];
+      return tm && tm.hp > 0;
     });
     if (stillAlive.length === 0) this.gameOver();
   }
@@ -3543,15 +4113,25 @@ class Game {
       window.audioManager.defeat();
     }
     // 立即禁用战斗操作，防止继续出牌/结束回合
-    const endTurnBtn = document.getElementById("end-turn-btn");
-    const resetBtn = document.getElementById("reset-btn");
-    if (endTurnBtn) endTurnBtn.disabled = true;
-    if (resetBtn) resetBtn.disabled = true;
+    this.setBattleControlsEnabled(false);
     const handContainer = document.getElementById("hand-container");
     if (handContainer) handContainer.classList.add("game-ended");
     setTimeout(() => {
       this.showModal("失败", "全军覆没，旅程结束。");
     }, 500);
+  }
+
+  setBattleControlsEnabled(enabled) {
+    this.battleUIEnabled = !!enabled;
+    const ids = ["play-cards-btn", "auto-fill-btn", "reset-btn", "end-turn-btn"];
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !this.battleUIEnabled;
+    });
+    const hand = document.getElementById("hand-container");
+    if (hand) hand.classList.toggle("battle-locked", !this.battleUIEnabled);
+    const played = document.getElementById("played-container");
+    if (played) played.classList.toggle("battle-locked", !this.battleUIEnabled);
   }
 
   // 获取卡牌等级（用于战斗伤害/治疗倍率）
@@ -3574,6 +4154,14 @@ class Game {
     t.hp = Math.min(t.maxHp, t.hp + amount);
     const healed = t.hp - before;
     this.updateTeammateStatus(profession);
+    // 治疗飘字 + 护盾条上涨动画，让“回血”更明显
+    try {
+      const slot = document.getElementById(`slot-${profession}`);
+      if (slot && this.effects && typeof this.effects.showDamageNumber === "function") {
+        const rect = slot.getBoundingClientRect();
+        this.effects.showDamageNumber(healed, rect.left + rect.width / 2, rect.top, false, true);
+      }
+    } catch (_) {}
     this.log(
       `${sourceName || "治疗"} 为 ${this.getProfessionLabel(
         profession
@@ -3594,6 +4182,13 @@ class Game {
       const healed = t.hp - before;
       this.updateTeammateStatus(p);
       if (healed > 0) {
+        try {
+          const slot = document.getElementById(`slot-${p}`);
+          if (slot && this.effects && typeof this.effects.showDamageNumber === "function") {
+            const rect = slot.getBoundingClientRect();
+            this.effects.showDamageNumber(healed, rect.left + rect.width / 2, rect.top, false, true);
+          }
+        } catch (_) {}
         this.log(
           `${sourceName || "群体治疗"} 为 ${this.getProfessionLabel(
             p
@@ -3689,52 +4284,21 @@ class Game {
       });
     }
 
-    document.getElementById("play-cards-btn").addEventListener("click", () => {
-      if (!this.battle || this.gameEnded) return;
-      const indices = this.getSelectedHandIndices();
-      if (indices.length === 0) {
-        this.log("请先点选手牌，再点「出牌」打到出牌区。", "system");
-        return;
-      }
-      const limit = this.getPlayedLimit ? this.getPlayedLimit() : 5;
-      if (this.battle.playedCards.length >= limit) {
-        this.log(`出牌区已满（最多 ${limit} 张）。`, "system");
-        return;
-      }
-      this.playSelectedToArea();
-    });
+    // 伤害框悬停：全局委托兜底（避免 DOM 移动/重复渲染导致监听器失效）
+    if (!document.body.dataset.damageBreakdownGlobalBound) {
+      document.body.dataset.damageBreakdownGlobalBound = "1";
+      // 把 tooltip 节点抬到 body，避免被局部 transform/overflow 影响 fixed 定位或被遮挡
+      try {
+        const ids = ["damage-breakdown-tooltip", "status-hover-tooltip", "item-tooltip"];
+        ids.forEach((id) => {
+          const el = document.getElementById(id);
+          if (el && el.parentElement !== document.body) document.body.appendChild(el);
+        });
+      } catch (_) {}
 
-    document.getElementById("auto-fill-btn").addEventListener("click", () => {
-      if (!this.battle || this.gameEnded) return;
-      this.autoFillPlayedToFive();
-    });
-
-    document.getElementById("reset-btn").addEventListener("click", () => {
-      const indices = this.getSelectedHandIndices();
-      if (indices.length === 0) {
-        this.log("请先点选要换掉的牌，再点「换牌」。", "system");
-        return;
-      }
-      this.battle.mulligan(indices);
-    });
-
-    document.getElementById("end-turn-btn").addEventListener("click", () => {
-      // 团队眩晕：本回合无法出牌，只能结束回合
-      if ((this.teamStunned || 0) > 0) {
-        this.teamStunned--;
-        this.log("✨ 眩晕中：本回合无法出牌，直接结束回合。", "system");
-      }
-      if (this.needsHealTarget()) {
-        this.autoAssignHealTargets();
-      }
-      this.battle.playCards();
-    });
-
-    // 伤害框悬停：显示「具体怎么算」的浮动说明
-    const damageBox = document.getElementById("battle-sidebar-damage-box");
-    const damageTooltip = document.getElementById("damage-breakdown-tooltip");
-    if (damageBox && damageTooltip) {
-      damageBox.addEventListener("mouseenter", (e) => {
+      const show = (damageBox) => {
+        const damageTooltip = document.getElementById("damage-breakdown-tooltip");
+        if (!damageTooltip || !damageBox) return;
         const raw = damageBox.dataset.damageBreakdown;
         if (!raw || !raw.length) {
           damageTooltip.innerHTML = "<span class=\"tooltip-title\">伤害计算</span><span class=\"tooltip-line\">当前无牌型 / 未出牌</span>";
@@ -3761,11 +4325,156 @@ class Game {
         if (top < 10) top = 10;
         damageTooltip.style.left = `${left}px`;
         damageTooltip.style.top = `${top}px`;
+      };
+      const hide = () => {
+        const damageTooltip = document.getElementById("damage-breakdown-tooltip");
+        if (damageTooltip) damageTooltip.classList.add("hidden");
+      };
+      const showStatus = (html, x, y) => {
+        const tt = document.getElementById("status-hover-tooltip");
+        if (!tt) return;
+        tt.innerHTML = html;
+        tt.classList.remove("hidden");
+        const w = tt.getBoundingClientRect().width || 260;
+        const h = tt.getBoundingClientRect().height || 80;
+        let left = x + 14;
+        let top = y + 14;
+        if (left + w > window.innerWidth) left = x - w - 14;
+        if (top + h > window.innerHeight) top = window.innerHeight - h - 10;
+        if (top < 10) top = 10;
+        tt.style.left = `${left}px`;
+        tt.style.top = `${top}px`;
+      };
+      const hideStatus = () => {
+        const tt = document.getElementById("status-hover-tooltip");
+        if (tt) tt.classList.add("hidden");
+      };
+      const showItem = (itemId, x, y) => {
+        const tt = document.getElementById("item-tooltip");
+        if (!tt) return;
+        if (!itemId || typeof ITEMS_DB === "undefined" || !ITEMS_DB[itemId]) return;
+        const item = ITEMS_DB[itemId];
+        tt.innerHTML = `
+          <div class="item-tooltip-name">${item.icon} ${item.name}</div>
+          <div class="item-tooltip-desc">${item.description || ""}</div>
+          ${item.detail ? `<div class="item-tooltip-effect">${item.detail.replace(/\n/g, "<br>")}</div>` : ""}
+        `;
+        tt.classList.remove("hidden");
+        const w = tt.getBoundingClientRect().width || 260;
+        const h = tt.getBoundingClientRect().height || 120;
+        let left = x + 14;
+        let top = y + 14;
+        if (left + w > window.innerWidth) left = x - w - 14;
+        if (top + h > window.innerHeight) top = window.innerHeight - h - 10;
+        if (top < 10) top = 10;
+        tt.style.left = `${left}px`;
+        tt.style.top = `${top}px`;
+        tt.style.transform = "";
+      };
+      const hideItem = () => {
+        const tt = document.getElementById("item-tooltip");
+        if (tt) tt.classList.add("hidden");
+      };
+
+      document.addEventListener("mousemove", (e) => {
+        const x = e.clientX;
+        const y = e.clientY;
+
+        // 1) 伤害明细：用坐标判断（不依赖 target）
+        const box = document.getElementById("battle-sidebar-damage-box");
+        if (box) {
+          const r = box.getBoundingClientRect();
+          const inside = x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+          if (inside) {
+            show(box);
+          } else {
+            hide();
+          }
+        }
+
+        // 2) debuff / 道具：用 elementFromPoint 抓真实覆盖下的元素
+        const el = document.elementFromPoint(x, y);
+        const badge = el && el.closest ? el.closest(".debuff-badge") : null;
+        if (badge && badge.textContent) {
+          // title 里已经是完整说明（我们不再依赖浏览器原生 tooltip）
+          const t = badge.getAttribute("title") || "";
+          if (t) {
+            showStatus(
+              `<span class="tooltip-title">状态说明</span><div class="tooltip-line base">${t}</div>`,
+              x,
+              y
+            );
+          } else {
+            hideStatus();
+          }
+        } else {
+          hideStatus();
+        }
+
+        // 3) 道具：不要用 closest(".item-slot") 直接取（ItemUtil 里会嵌套一个 .item-slot.has-item）
+        //    这里向上找“带 data-item-id 的外层槽位”，保证稳定。
+        let node = el;
+        let itemId = "";
+        for (let i = 0; i < 6 && node; i++) {
+          if (node.dataset && typeof node.dataset.itemId === "string" && node.dataset.itemId) {
+            itemId = node.dataset.itemId;
+            break;
+          }
+          node = node.parentElement;
+        }
+        if (itemId) showItem(itemId, x, y);
+        else hideItem();
       });
-      damageBox.addEventListener("mouseleave", () => {
-        damageTooltip.classList.add("hidden");
-      });
+      // 额外兜底：窗口失焦时隐藏
+      window.addEventListener("blur", () => { hide(); hideStatus(); hideItem(); });
+      document.addEventListener("scroll", () => { hide(); hideStatus(); hideItem(); }, true);
     }
+
+    document.getElementById("play-cards-btn").addEventListener("click", () => {
+      if (!this.battle || this.gameEnded || !this.battleUIEnabled) return;
+      const indices = this.getSelectedHandIndices();
+      if (indices.length === 0) {
+        this.log("请先点选手牌，再点「出牌」打到出牌区。", "system");
+        return;
+      }
+      const limit = this.getPlayedLimit ? this.getPlayedLimit() : 5;
+      if (this.battle.playedCards.length >= limit) {
+        this.log(`出牌区已满（最多 ${limit} 张）。`, "system");
+        return;
+      }
+      this.playSelectedToArea();
+    });
+
+    document.getElementById("auto-fill-btn").addEventListener("click", () => {
+      if (!this.battle || this.gameEnded || !this.battleUIEnabled) return;
+      this.autoFillPlayedToFive();
+    });
+
+    document.getElementById("reset-btn").addEventListener("click", () => {
+      if (!this.battle || this.gameEnded || !this.battleUIEnabled) return;
+      const indices = this.getSelectedHandIndices();
+      if (indices.length === 0) {
+        this.log("请先点选要换掉的牌，再点「换牌」。", "system");
+        return;
+      }
+      this.battle.mulligan(indices);
+    });
+
+    document.getElementById("end-turn-btn").addEventListener("click", () => {
+      if (!this.battle || this.gameEnded || !this.battleUIEnabled) return;
+      // 团队眩晕：本回合无法出牌，只能结束回合
+      if ((this.teamStunned || 0) > 0) {
+        this.teamStunned--;
+        this.log("✨ 眩晕中：本回合无法出牌，直接结束回合。", "system");
+      }
+      if (this.needsHealTarget()) {
+        this.autoAssignHealTargets();
+      }
+      this.battle.playCards();
+    });
+
+    // 伤害框悬停：局部绑定保留（更省资源）；全局委托在上面已兜底
+    this.bindDamageBreakdownTooltip();
 
     const discardToggle = document.getElementById("discard-toggle");
     const discardCount = document.getElementById("discard-count");
@@ -3826,6 +4535,51 @@ class Game {
     // 因为职业列表是动态的，所以事件绑定需要在创建队友槽位时进行
   }
 
+  bindDamageBreakdownTooltip() {
+    const damageBox = document.getElementById("battle-sidebar-damage-box");
+    const damageTooltip = document.getElementById("damage-breakdown-tooltip");
+    if (!damageBox || !damageTooltip) return;
+
+    // 避免重复绑定
+    if (damageBox.dataset.breakdownBound === "1") return;
+    damageBox.dataset.breakdownBound = "1";
+
+    const show = () => {
+      const raw = damageBox.dataset.damageBreakdown;
+      if (!raw || !raw.length) {
+        damageTooltip.innerHTML = "<span class=\"tooltip-title\">伤害计算</span><span class=\"tooltip-line\">当前无牌型 / 未出牌</span>";
+      } else {
+        try {
+          const parts = JSON.parse(raw);
+          let html = "<span class=\"tooltip-title\">伤害计算</span>";
+          parts.forEach((p) => {
+            const cls = p.cls || "";
+            html += `<div class="tooltip-line ${cls}">${p.line}</div>`;
+          });
+          damageTooltip.innerHTML = html;
+        } catch (_) {
+          damageTooltip.textContent = raw;
+        }
+      }
+      damageTooltip.classList.remove("hidden");
+      const rect = damageBox.getBoundingClientRect();
+      const ttRect = damageTooltip.getBoundingClientRect();
+      let left = rect.right + 10;
+      let top = rect.top;
+      if (left + ttRect.width > window.innerWidth) left = rect.left - ttRect.width - 10;
+      if (top + ttRect.height > window.innerHeight) top = window.innerHeight - ttRect.height - 10;
+      if (top < 10) top = 10;
+      damageTooltip.style.left = `${left}px`;
+      damageTooltip.style.top = `${top}px`;
+    };
+    const hide = () => damageTooltip.classList.add("hidden");
+
+    // 某些布局/覆盖层下 mouseenter 可能不稳定，补一个 mousemove 兜底
+    damageBox.addEventListener("mouseenter", show);
+    damageBox.addEventListener("mousemove", show);
+    damageBox.addEventListener("mouseleave", hide);
+  }
+
   clearSelectedTarget() {
     const professions = this.selectedProfessions || ["warrior", "mage", "ranger"];
     professions.forEach((p) => {
@@ -3836,14 +4590,16 @@ class Game {
   }
 
   // 为某张手牌索引绑定治疗目标
-  bindHealTarget(cardIndex, profession) {
+  // 为某张“出牌区索引”绑定治疗目标（用于治疗结算；拖拽到队友头像也走这里）
+  bindHealTarget(cardIndex, profession, opts = {}) {
     if (!this.isProfessionActive(profession)) {
       this.log("该队友已无法战斗，不能作为目标。", "system");
       return;
     }
-    const hand = this.battle && this.battle.hand;
-    if (!hand || hand[cardIndex] == null) return;
-    const card = CARDS_DB[hand[cardIndex]];
+    if (!this.battle || !Array.isArray(this.battle.playedCards)) return;
+    const playedId = this.battle.playedCards[cardIndex];
+    if (!playedId) return;
+    const card = CARDS_DB[playedId];
     if (!card || !card.heal || card.healAll) return;
     // 治疗牌所属职业如果已阵亡，则该牌本回合失效，不允许再选目标
     const ownerProf = card.profession || "common";
@@ -3858,7 +4614,8 @@ class Game {
     this.healTargets[cardIndex] = { target: profession, kind, tag };
 
     this.renderHealMarkers();
-    this.renderHand(this.battle.hand);
+    // 绑定是按“出牌区索引”，只需要刷新出牌区即可；手牌不再显示 heal-bound 以免误导
+    if (typeof this.renderPlayedArea === "function") this.renderPlayedArea(this.battle.playedCards);
 
     this.log(
       `已将【${card.name}】绑定到 ${this.getProfessionLabel(profession)}（${kind === "potion" ? "🧪" : "💚"}${tag}）。`,
@@ -3921,11 +4678,7 @@ class Game {
       slot.appendChild(el);
     });
 
-    const cardEls = document.querySelectorAll("#hand-container .card");
-    cardEls.forEach((el) => {
-      const idx = parseInt(el.dataset.index, 10);
-      el.classList.toggle("heal-bound", this.healTargets[idx] != null);
-    });
+    // healTargets 现在按“出牌区索引”存，不再在手牌上标记 heal-bound
   }
 
   // 出牌区中是否存在需要指定目标的治疗牌
@@ -3973,7 +4726,7 @@ class Game {
           });
           
           // 自动分配
-          this.bindHealTarget(idx, lowestHpProf);
+          this.bindHealTarget(idx, lowestHpProf, { source: "auto" });
           this.log(`【${card.name}】自动分配给 ${this.getProfessionLabel(lowestHpProf)}`, "system");
         }
       }
@@ -4016,6 +4769,7 @@ class Game {
   resetHealBindings() {
     this.healTargets = {};
     this._healTagSeq = 1;
+    this._pendingHealPlayedIndex = null;
     this.renderHealMarkers();
   }
 }

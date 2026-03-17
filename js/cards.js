@@ -9,8 +9,8 @@ const CARDS_DB = {
     type: "attack",
     profession: "common",
     cost: 1,
-    damage: 4,
-    description: "造成 4 点伤害",
+    damage: 6,
+    description: "造成 6 点伤害",
     detail: "基础攻击牌，适合凑牌型"
   },
   heavy_attack: {
@@ -20,9 +20,9 @@ const CARDS_DB = {
     type: "attack",
     profession: "common",
     cost: 2,
-    damage: 8,
-    description: "造成 8 点伤害",
-    detail: "消耗更高的攻击牌，伤害适中"
+    damage: 14,
+    description: "造成 14 点伤害",
+    detail: "消耗更高的攻击牌，单卡伤害更高"
   },
   block: {
     id: "block",
@@ -31,8 +31,8 @@ const CARDS_DB = {
     type: "skill",
     profession: "common",
     cost: 1,
-    shield: 6,
-    description: "获得 6 点护盾",
+    shield: 4,
+    description: "获得 4 点护盾",
     detail: "护盾可以抵挡伤害，每回合清除"
   },
   potion: {
@@ -42,8 +42,8 @@ const CARDS_DB = {
     type: "item",
     profession: "common",
     cost: 1,
-    heal: 8,
-    description: "恢复 8 点生命",
+    heal: 5,
+    description: "恢复 5 点生命",
     detail: "拖到队友头像上使用，紧急回复"
   },
 
@@ -56,13 +56,13 @@ const CARDS_DB = {
     type: "skill",
     profession: "coder",
     cost: 0,
-    damage: 0,
+    damage: 3,
     description: "凑代码牌触发效果",
-    detail: "【核心卡】需要凑多张才能生效：\n2张 → 眩晕敌人1回合\n3张 → 眩晕+15伤害\n4张 → 眩晕+30伤害\n5张 → 眩晕+50伤害+敌人技能封印",
+    detail: "【核心卡】需要凑多张才能生效：\n2张 → 眩晕敌人1回合 +8伤害\n3张 → 眩晕+18伤害\n4张 → 眩晕+32伤害\n5张 → 眩晕+50伤害+敌人技能封印",
     combo: {
-      2: { stun: true, damage: 0 },
-      3: { stun: true, damage: 15 },
-      4: { stun: true, damage: 30 },
+      2: { stun: true, damage: 8 },
+      3: { stun: true, damage: 18 },
+      4: { stun: true, damage: 32 },
       5: { stun: true, damage: 50, silence: true }
     }
   },
@@ -73,9 +73,9 @@ const CARDS_DB = {
     type: "skill",
     profession: "coder",
     cost: 0,
-    damage: 0,
+    damage: 6,
     description: "高级代码牌，效果更强",
-    detail: "【核心卡】相当于2张敲代码牌\n手牌中有 2 张时：眩晕敌人\n手牌中有 3 张时：眩晕+20伤害\n可与其他代码牌叠加计算",
+    detail: "【核心卡】相当于2张敲代码牌\n手牌中有 2 张时：眩晕敌人\n手牌中有 3 张时：眩晕+18伤害\n可与其他代码牌叠加计算",
     combo: {
       2: { stun: true, damage: 0 },
       3: { stun: true, damage: 20 }
@@ -89,10 +89,10 @@ const CARDS_DB = {
     type: "attack",
     profession: "coder",
     cost: 1,
-    damage: 3,
-    selfDamage: 2,
-    description: "造成 3 伤害，自己掉 2 血",
-    detail: "低伤自残牌，适合凑牌型\n⚠️ 注意：自己也会受伤"
+    damage: 8,
+    selfDamage: 3,
+    description: "造成 8 伤害，自己掉 3 血",
+    detail: "自残牌，交换血量来打输出\n⚠️ 注意：自己也会受伤"
   },
   coder_coffee: {
     id: "coder_coffee",
@@ -101,9 +101,9 @@ const CARDS_DB = {
     type: "skill",
     profession: "coder",
     cost: 1,
-    heal: 8,
+    heal: 6,
     draw: 1,
-    description: "恢复 8 血，下回合多抽 1 张",
+    description: "恢复 6 血，下回合多抽 1 张",
     detail: "程序员的核心回复牌\n回血+过牌，下回合多抽1张牌\n性价比高"
   },
   coder_deadline: {
@@ -113,9 +113,9 @@ const CARDS_DB = {
     type: "attack",
     profession: "coder",
     cost: 2,
-    damage: 18,
-    selfDamage: 6,
-    description: "造成 18 伤害！自己掉 6 血",
+    damage: 22,
+    selfDamage: 8,
+    description: "造成 22 伤害！自己掉 8 血",
     detail: "高伤自残牌，关键时刻爆发\n⚠️ 使用时注意自身血量"
   },
 
@@ -154,9 +154,9 @@ const CARDS_DB = {
     type: "attack",
     profession: "dog",
     cost: 1,
-    damage: 4,
+    damage: 5,
     stun: true,
-    description: "造成 4 伤害，眩晕敌人 1 回合",
+    description: "造成 5 伤害，眩晕敌人 1 回合",
     detail: "【控制牌】低伤但带眩晕\n打断敌人节奏的神技\n可与流氓牌触发「街头恶霸」组合"
   },
   dog_bite: {
@@ -166,8 +166,8 @@ const CARDS_DB = {
     type: "attack",
     profession: "dog",
     cost: 1,
-    damage: 6,
-    description: "造成 6 伤害",
+    damage: 7,
+    description: "造成 7 伤害",
     detail: "狗的基础攻击牌\n伤害适中，适合凑牌型\n可与流氓牌触发「街头恶霸」组合"
   },
   dog_tail: {
@@ -177,10 +177,32 @@ const CARDS_DB = {
     type: "skill",
     profession: "dog",
     cost: 0,
-    healAll: 3,
+    healAll: 4,
     draw: 1,
-    description: "全队恢复 3 血，下回合多抽 1 张",
+    description: "全队恢复 4 血，下回合多抽 1 张",
     detail: "【神技】免费打出！\n全队回血+过牌，下回合多抽1张\n狗的核心辅助牌"
+  },
+  dog_guard: {
+    id: "dog_guard",
+    name: "守护气息",
+    icon: "🛡️",
+    type: "skill",
+    profession: "dog",
+    cost: 1,
+    negateHandPoison: true,
+    description: "本回合同打牌：异常无效",
+    detail: "本回合与此牌同时打出的牌，其“异常效果”无效。\n（用于克制：被Boss下毒的手牌，打出后导致我方中毒）"
+  },
+  dog_detox: {
+    id: "dog_detox",
+    name: "解毒",
+    icon: "🧼",
+    type: "skill",
+    profession: "dog",
+    cost: 1,
+    cleanse: 6,
+    description: "净化负面效果（中毒/灼烧）",
+    detail: "为全队净化负面效果：\n- 中毒 -6\n- 灼烧 -6\n（最低减到 0）\n用于应对第2关毒 Boss 的持续伤害"
   },
   dog_dig: {
     id: "dog_dig",
@@ -190,8 +212,8 @@ const CARDS_DB = {
     profession: "dog",
     cost: 1,
     trap: true,
-    damage: 12,
-    description: "埋坑，敌人下回合踩中受 12 伤害",
+    damage: 18,
+    description: "埋坑，敌人下回合踩中受 18 伤害",
     detail: "【陷阱牌】延迟伤害\n回合结束不触发，敌人回合触发\n适合在安全回合布置"
   },
   dog_fetch: {
@@ -213,8 +235,8 @@ const CARDS_DB = {
     profession: "dog",
     cost: 2,
     buff: { damage: 1.3, duration: 2 },
-    healAll: 6,
-    description: "全队回 6 血，伤害×1.3 持续 2 回合",
+    healAll: 8,
+    description: "全队回 8 血，伤害×1.3 持续 2 回合",
     detail: "【大招】狗的最强辅助牌\n全队回血+增伤Buff\n持续2回合，性价比极高"
   },
 
@@ -227,9 +249,9 @@ const CARDS_DB = {
     type: "attack",
     profession: "teacher",
     cost: 1,
-    damage: 3,
+    damage: 5,
     slow: 2,
-    description: "造成 3 伤害，敌人减速 2 回合",
+    description: "造成 5 伤害，敌人减速 2 回合",
     detail: "【控制牌】降低敌人攻击力\n适合削弱Boss\n与程序员牌触发「网课噩梦」组合"
   },
   teacher_homework: {
@@ -250,8 +272,8 @@ const CARDS_DB = {
     type: "attack",
     profession: "teacher",
     cost: 1,
-    damage: 8,
-    description: "造成 8 伤害",
+    damage: 9,
+    description: "造成 9 伤害",
     detail: "老师的基础攻击牌\n伤害适中，适合凑牌型"
   },
   teacher_redpen: {
@@ -261,9 +283,9 @@ const CARDS_DB = {
     type: "attack",
     profession: "teacher",
     cost: 2,
-    damage: 5,
+    damage: 7,
     weakness: 2,
-    description: "造成 5 伤害，敌人伤害-50% 持续 2 回合",
+    description: "造成 7 伤害，敌人伤害-50% 持续 2 回合",
     detail: "【削弱牌】大幅降低敌人伤害\n对付高攻敌人必备\n与流氓牌触发「思想教育」组合"
   },
   teacher_summer: {
@@ -273,9 +295,9 @@ const CARDS_DB = {
     type: "skill",
     profession: "teacher",
     cost: 2,
-    healAll: 12,
-    shield: 6,
-    description: "全队回 12 血 + 6 护盾",
+    healAll: 14,
+    shield: 8,
+    description: "全队回 14 血 + 8 护盾",
     detail: "【回复牌】老师的核心回复牌\n回血+护盾，保护全队\n与保安牌触发「班级秩序」组合"
   },
   teacher_failing: {
@@ -285,9 +307,9 @@ const CARDS_DB = {
     type: "attack",
     profession: "teacher",
     cost: 3,
-    damage: 25,
+    damage: 28,
     execute: 0.25,
-    description: "造成 25 伤害，敌人血量<25% 直接秒杀",
+    description: "造成 28 伤害，敌人血量<25% 直接秒杀",
     detail: "【大招】老师的终结技\n斩杀线：敌人血量低于25%\n适合收尾"
   },
 
@@ -300,9 +322,9 @@ const CARDS_DB = {
     type: "attack",
     profession: "security",
     cost: 1,
-    damage: 4,
+    damage: 5,
     blind: true,
-    description: "造成 4 伤害，敌人致盲 1 回合",
+    description: "造成 5 伤害，敌人致盲 1 回合",
     detail: "【控制牌】致盲让敌人命中率下降\n低伤但控制效果强\n与流氓牌触发「暴力执法」组合"
   },
   security_whistle: {
@@ -313,8 +335,8 @@ const CARDS_DB = {
     profession: "security",
     cost: 1,
     taunt: true,
-    shield: 10,
-    description: "嘲讽敌人 + 获得 10 护盾",
+    shield: 12,
+    description: "嘲讽敌人 + 获得 12 护盾",
     detail: "【坦克牌】强制敌人攻击自己\n+护盾保护自己\n与狗牌触发「忠诚卫士」组合"
   },
   security_patrol: {
@@ -324,9 +346,9 @@ const CARDS_DB = {
     type: "skill",
     profession: "security",
     cost: 1,
-    shield: 6,
+    shield: 8,
     draw: 1,
-    description: "获得 6 护盾，下回合多抽 1 张",
+    description: "获得 8 护盾，下回合多抽 1 张",
     detail: "【防御牌】护盾+过牌\n稳定防御，下回合多抽1张\n与老师牌触发「班级秩序」组合"
   },
   security_baton: {
@@ -336,9 +358,9 @@ const CARDS_DB = {
     type: "attack",
     profession: "security",
     cost: 2,
-    damage: 12,
+    damage: 14,
     stun: true,
-    description: "造成 12 伤害，眩晕敌人 1 回合",
+    description: "造成 14 伤害，眩晕敌人 1 回合",
     detail: "【控制攻击】伤害不错+眩晕\n与流氓牌触发「暴力执法」组合"
   },
   security_id: {
@@ -360,9 +382,9 @@ const CARDS_DB = {
     type: "skill",
     profession: "security",
     cost: 3,
-    shield: 20,
-    healAll: 10,
-    description: "全队回 10 血 + 自己 20 护盾",
+    shield: 25,
+    healAll: 12,
+    description: "全队回 12 血 + 自己 25 护盾",
     detail: "【大招】保安的最强防御牌\n全队回血+巨额护盾\n保命神技"
   },
 
@@ -374,9 +396,10 @@ const CARDS_DB = {
     icon: "👊",
     type: "attack",
     profession: "hooligan",
+    archetype: "攻",
     cost: 1,
-    damage: 6,
-    description: "造成 6 伤害（物理输出）",
+    damage: 8,
+    description: "造成 8 伤害（物理输出）",
     detail: "流氓的基础攻击牌\n低费适中伤害\n与狗牌触发「街头恶霸」组合\n与保安牌触发「暴力执法」组合"
   },
   hooligan_kick: {
@@ -385,9 +408,10 @@ const CARDS_DB = {
     icon: "🦶",
     type: "attack",
     profession: "hooligan",
+    archetype: "攻",
     cost: 2,
-    damage: 12,
-    description: "造成 12 伤害",
+    damage: 15,
+    description: "造成 15 伤害",
     detail: "流氓的中等伤害攻击\n适合爆发输出\n可与狗牌触发「街头恶霸」组合"
   },
 
@@ -398,10 +422,10 @@ const CARDS_DB = {
     type: "attack",
     profession: "hooligan",
     cost: 2,
-    damage: 12,
+    damage: 15,
     stun: true,
     lockedByDefault: true,
-    description: "造成 12 伤害，眩晕敌人 1 回合",
+    description: "造成 15 伤害，眩晕敌人 1 回合",
     detail: "【成就解锁】高爆发控制\n单卡质量极高，适合压制 Boss\n与任何牌型都能直接增强输出"
   },
   hooligan_steal: {
@@ -410,9 +434,10 @@ const CARDS_DB = {
     icon: "💰",
     type: "skill",
     profession: "hooligan",
+    archetype: "防",
     cost: 1,
-    steal: 8,
-    description: "偷取敌人 8 金币",
+    steal: 12,
+    description: "偷取敌人 12 金币",
     detail: "【经济牌】额外获取金币\n不影响战斗但增加收益\n刷钱利器"
   },
   hooligan_intimidate: {
@@ -421,6 +446,7 @@ const CARDS_DB = {
     icon: "😈",
     type: "skill",
     profession: "hooligan",
+    archetype: "控",
     cost: 1,
     weakness: 2,
     description: "敌人伤害 -50% 持续 2 回合",
@@ -432,13 +458,13 @@ const CARDS_DB = {
     icon: "🏖️",
     type: "attack",
     profession: "hooligan",
+    archetype: "控",
     cost: 1,
-    damage: 3,
     blind: true,
-    stun: true,
-    description: "造成 3 伤害 + 致盲 + 眩晕",
-    detail: "【卑鄙牌】低伤但双控制\n致盲+眩晕，打断敌人\n不讲武德！"
+    description: "致盲敌人 1 回合（命中率 -20%）",
+    detail: "【卑鄙牌】纯控制\n致盲：敌人命中率 -20%\n不造成伤害，不附带眩晕\n用来打断对手节奏"
   },
+  // 其余流氓牌未显式标注时，牌型规则会回退到 type（attack/skill/...）
   hooligan_combo: {
     id: "hooligan_combo",
     name: "组合拳",
@@ -446,10 +472,11 @@ const CARDS_DB = {
     type: "attack",
     profession: "hooligan",
     cost: 3,
-    damage: 5,
-    hitCount: 4,
-    description: "造成 5×4 = 20 伤害",
-    detail: "【大招】流氓的爆发技能\n4连击，总伤害20\n适合收尾或打爆发\n与狗牌触发「街头恶霸」组合"
+    damage: 0,
+    bleed: 10,
+    archetype: "割",
+    description: "给敌人施加流血 +10（本身不造成伤害）",
+    detail: "【大招】流氓的持续输出技能\n给敌人施加流血 +10（每回合结算并逐步衰减）\n本身不造成直接伤害\n用于打厚血Boss/精英更稳定"
   }
 };
 
@@ -503,41 +530,67 @@ const PROFESSION_COMBOS = {
     name: "狗",
     comboCards: ["dog_bark", "dog_bite", "dog_tail"],
     crossProfession: [
-      { with: "hooligan", name: "街头恶霸", effect: "伤害×2.5 + 眩晕" },
-      { with: "security", name: "忠诚卫士", effect: "伤害×2 + 护盾20" }
+      { id: "cross_dog_hooligan", with: "hooligan", name: "街头恶霸", effect: "伤害×2.5 + 眩晕" },
+      { id: "cross_dog_security", with: "security", name: "忠诚卫士", effect: "伤害×2 + 护盾20" }
     ]
   },
   teacher: {
     name: "老师",
     comboCards: ["teacher_lecture", "teacher_homework"],
     crossProfession: [
-      { with: "coder", name: "网课噩梦", effect: "伤害×3 + 敌人混乱" },
-      { with: "hooligan", name: "思想教育", effect: "伤害×1.5 + 伤害转治疗50%" },
-      { with: "security", name: "班级秩序", effect: "伤害×2 + 嘲讽" }
+      { id: "cross_teacher_coder", with: "coder", name: "网课噩梦", effect: "伤害×3 + 敌人混乱" },
+      { id: "cross_teacher_hooligan", with: "hooligan", name: "思想教育", effect: "伤害×1.5 + 伤害转治疗50%" },
+      { id: "cross_teacher_security", with: "security", name: "班级秩序", effect: "伤害×2 + 嘲讽" }
     ]
   },
   security: {
     name: "保安",
     comboCards: ["security_whistle", "security_baton"],
     crossProfession: [
-      { with: "dog", name: "忠诚卫士", effect: "伤害×2 + 护盾20" },
-      { with: "hooligan", name: "暴力执法", effect: "伤害×3.5 + 无视防御" },
-      { with: "teacher", name: "班级秩序", effect: "伤害×2 + 嘲讽" }
+      { id: "cross_security_dog", with: "dog", name: "忠诚卫士", effect: "伤害×2 + 护盾20" },
+      { id: "cross_security_hooligan", with: "hooligan", name: "暴力执法", effect: "伤害×3.5 + 无视防御" },
+      { id: "cross_security_teacher", with: "teacher", name: "班级秩序", effect: "伤害×2 + 嘲讽" }
     ]
   },
   hooligan: {
     name: "流氓",
     comboCards: ["hooligan_punch", "hooligan_kick", "hooligan_combo"],
     crossProfession: [
-      { with: "dog", name: "街头恶霸", effect: "伤害×2.5 + 眩晕" },
-      { with: "teacher", name: "思想教育", effect: "伤害×1.5 + 伤害转治疗50%" },
-      { with: "security", name: "暴力执法", effect: "伤害×3.5 + 无视防御" }
+      { id: "cross_hooligan_dog", with: "dog", name: "街头恶霸", effect: "伤害×2.5 + 眩晕" },
+      { id: "cross_hooligan_teacher", with: "teacher", name: "思想教育", effect: "伤害×1.5 + 伤害转治疗50%" },
+      { id: "cross_hooligan_security", with: "security", name: "暴力执法", effect: "伤害×3.5 + 无视防御" }
     ]
   }
 };
 
 // 工具函数
 const CardUtil = {
+  // 隐藏未解锁的跨职业组合文本（用于卡牌 detail/tooltip 中的“与X牌触发「YYY」组合”）
+  maskCrossComboText(text, unlockedProfessions = [], discoveredCombos = []) {
+    try {
+      if (!text) return text;
+      const unlocked = new Set(Array.isArray(unlockedProfessions) ? unlockedProfessions : []);
+      const discovered = new Set(Array.isArray(discoveredCombos) ? discoveredCombos : []);
+      const cnToProf = { "狗": "dog", "老师": "teacher", "保安": "security", "程序员": "coder" };
+
+      const lines = String(text).split("\n");
+      const out = lines.map((line) => {
+        const m = line.match(/与(狗|老师|保安|程序员)牌触发[「“](.+?)[」”]\s*组合/);
+        if (!m) return line;
+        const otherCn = m[1];
+        const otherProf = cnToProf[otherCn];
+        const comboName = m[2];
+        // 如果对方职业未解锁且该组合也未“发现”，则隐藏细节
+        const revealed = (otherProf && unlocked.has(otherProf)) || discovered.has(comboName);
+        if (revealed) return line;
+        return "与？？？职业可触发隐藏组合";
+      });
+      return out.join("\n");
+    } catch (_) {
+      return text;
+    }
+  },
+
   // 创建卡牌元素
   createCardElement(cardId, index) {
     const card = CARDS_DB[cardId];
@@ -550,11 +603,21 @@ const CardUtil = {
     el.dataset.index = index;
 
     const profShort = PROFESSION_SHORT[card.profession] || "通";
+    const archRaw = card.archetype || card.type || "";
+    const archLabel =
+      archRaw === "attack" ? "攻" :
+      archRaw === "skill" ? "守" :
+      archRaw === "item" ? "技" :
+      (archRaw ? String(archRaw) : "");
+    const archTag = archLabel ? `【${archLabel}】` : "";
+    const descText = (card.description || "");
+    const descWithArch = archTag ? `${archTag} ${descText}` : descText;
     el.innerHTML = `
       <div class="card-profession-badge" data-profession="${card.profession || 'common'}">${profShort}</div>
+      ${archLabel ? `<div class="card-archetype-badge" data-arch="${archLabel}">${archLabel}</div>` : ""}
       <div class="card-icon">${card.icon}</div>
       <div class="card-name">${card.name}</div>
-      <div class="card-type">${card.description}</div>
+      <div class="card-type">${descWithArch}</div>
     `;
 
     // 悬停显示详情
@@ -596,10 +659,21 @@ const CardUtil = {
       <span class="tooltip-name">${card.name}</span>
     </div>`;
     
-    details += `<div class="tooltip-desc">${card.description}</div>`;
+    const archRaw = card.archetype || card.type || "";
+    const archLabel =
+      archRaw === "attack" ? "攻" :
+      archRaw === "skill" ? "守" :
+      archRaw === "item" ? "技" :
+      (archRaw ? String(archRaw) : "");
+    const archTag = archLabel ? `【${archLabel}】` : "";
+    details += `<div class="tooltip-desc">${archTag ? `<span class="tooltip-arch">${archTag}</span> ` : ""}${card.description || ""}</div>`;
     
     if (card.detail) {
-      details += `<div class="tooltip-detail">${card.detail.replace(/\n/g, '<br>')}</div>`;
+      const g = (typeof window !== "undefined") ? window.game : null;
+      const unlocked = Array.isArray(g?.unlockedProfessions) ? g.unlockedProfessions : [];
+      const discovered = Array.isArray(g?.discoveredCombos) ? g.discoveredCombos : [];
+      const masked = CardUtil.maskCrossComboText(card.detail, unlocked, discovered);
+      details += `<div class="tooltip-detail">${String(masked).replace(/\n/g, '<br>')}</div>`;
     }
 
     // 护盾机制说明（避免玩家误解：护盾如何吸收、毒/火焰如何处理）
@@ -626,10 +700,19 @@ const CardUtil = {
         details += `<div class="tooltip-combo">
           <div class="tooltip-combo-title">🌟 跨职业组合:</div>`;
         profCombo.crossProfession.forEach(c => {
+          const g = (typeof window !== "undefined") ? window.game : null;
+          const unlocked = Array.isArray(g?.unlockedProfessions) ? g.unlockedProfessions : [];
+          const discovered = Array.isArray(g?.discoveredCombos) ? g.discoveredCombos : [];
+          const otherUnlocked = c.with ? unlocked.includes(c.with) : false;
+          // 设计：未解锁/未发现时显示“有但不知道是什么”
+          const revealed = otherUnlocked || (c.id && discovered.includes(c.id));
+          const shownName = revealed ? c.name : "*****";
+          const shownWith = revealed ? (PROFESSION_NAMES[c.with] || c.with) : "？？？";
+          const shownEffect = revealed ? c.effect : "效果未知";
           details += `<div class="tooltip-combo-item">
-            <span class="combo-name">${c.name}</span>
-            <span class="combo-with">(${PROFESSION_NAMES[c.with]})</span>
-            <span class="combo-effect">${c.effect}</span>
+            <span class="combo-name">${shownName}</span>
+            <span class="combo-with">(${shownWith})</span>
+            <span class="combo-effect">${shownEffect}</span>
           </div>`;
         });
         details += `</div>`;

@@ -6,12 +6,12 @@ const FLOORS = [
     description: "城市的阴暗角落，流氓和小混混的领地",
     theme: "street",
     enemies: [
-      { id: "thug", name: "街头混混", hp: 60, atk: 8, icon: "👊" },
-      { id: "gangster", name: "帮派成员", hp: 80, atk: 10, icon: "🧢" },
-      { id: "dealer", name: "黑市商贩", hp: 50, atk: 6, icon: "💰" },
-      { id: "pickpocket", name: "扒手", hp: 40, atk: 5, icon: "🦝" },
+      { id: "thug", name: "街头混混", hp: 95, atk: 8, icon: "👊" },
+      { id: "gangster", name: "帮派成员", hp: 125, atk: 10, icon: "🧢" },
+      { id: "dealer", name: "黑市商贩", hp: 85, atk: 6, icon: "💰" },
+      { id: "pickpocket", name: "扒手", hp: 70, atk: 5, icon: "🦝" },
     ],
-    boss: { id: "boss_gang", name: "黑帮老大", hp: 200, atk: 12, icon: "🕶️", aiType: "boss1" },
+    boss: { id: "boss_gang", name: "黑帮老大", hp: 420, atk: 12, icon: "🕶️", aiType: "boss1" },
     events: [
       { id: "alley_cat", name: "巷子里的猫", icon: "🐱", description: "一只流浪猫向你讨食，你给了点钱。", effect: { gold: 15 } },
       { id: "street_vendor", name: "路边摊", icon: "🍜", description: "深夜的路边摊飘来香味，你买了一份。", effect: { gold: -10, healAll: true } },
@@ -32,7 +32,7 @@ const FLOORS = [
       { id: "fanatic", name: "成绩狂", hp: 55, atk: 7, icon: "📚" },
       { id: "playground_kid", name: "调皮学生", hp: 35, atk: 4, icon: "⚽" },
     ],
-    boss: { id: "boss_principal", name: "恶魔校长", hp: 300, atk: 14, icon: "👔", aiType: "boss2_poison" },
+    boss: { id: "boss_principal", name: "恶魔校长", hp: 340, atk: 14, icon: "👔", aiType: "boss2_poison" },
     events: [
       { id: "exam_paper", name: "掉落的试卷", icon: "📄", description: "捡到试卷交给失主，对方酬谢。", effect: { gold: 25 } },
       { id: "vending_machine", name: "自动贩卖机", icon: "🥤", description: "投币后卡住了，钱没了。", effect: { gold: -15 } },
@@ -53,7 +53,7 @@ const FLOORS = [
       { id: "deadline", name: "Deadline", hp: 100, atk: 15, icon: "⏰" },
       { id: "coffee_zombie", name: "咖啡僵尸", hp: 60, atk: 8, icon: "☕" },
     ],
-    boss: { id: "boss_cto", name: "CTO大魔王", hp: 400, atk: 18, icon: "💀", aiType: "boss3_fire" },
+    boss: { id: "boss_cto", name: "CTO大魔王", hp: 450, atk: 18, icon: "💀", aiType: "boss3_fire" },
     events: [
       { id: "vending_coffee", name: "咖啡机", icon: "☕", description: "免费咖啡，精神一振！", effect: { gold: 10, buff: "damage", value: 1.1 } },
       { id: "code_review", name: "代码审查", icon: "👀", description: "发现 Bug 修掉，拿了奖金。", effect: { gold: 35 } },
@@ -74,7 +74,7 @@ const FLOORS = [
       { id: "pet_dog", name: "恶犬", hp: 45, atk: 8, icon: "🐕" },
       { id: "property_mgr", name: "物业大爷", hp: 70, atk: 6, icon: "🧓" },
     ],
-    boss: { id: "boss_hoa", name: "业委会主任", hp: 500, atk: 20, icon: "🏠", aiType: "boss4_tank" },
+    boss: { id: "boss_hoa", name: "业委会主任", hp: 550, atk: 20, icon: "🏠", aiType: "boss4_tank" },
     events: [
       { id: "lost_package", name: "快递驿站", icon: "📦", description: "帮邻居取件，收到小费。", effect: { gold: 20 } },
       { id: "community_garden", name: "社区花园", icon: "🌻", description: "在花园休息了一会。", effect: { healAll: true } },
@@ -95,7 +95,7 @@ const FLOORS = [
       { id: "street_food", name: "摊贩老板", hp: 80, atk: 10, icon: "🍢" },
       { id: "influencer", name: "网红达人", hp: 60, atk: 9, icon: "📱" },
     ],
-    boss: { id: "boss_mayor", name: "城市大Boss", hp: 600, atk: 25, icon: "👑", aiType: "boss5_control" },
+    boss: { id: "boss_mayor", name: "城市大Boss", hp: 650, atk: 25, icon: "👑", aiType: "boss5_control" },
     events: [
       { id: "subway", name: "地铁站", icon: "🚇", description: "捡到别人掉的零钱。", effect: { gold: 30 } },
       { id: "shopping_mall", name: "商场大促", icon: "🛒", description: "剁手了。", effect: { gold: -40 } },
@@ -109,16 +109,16 @@ const FLOORS = [
 
 // ===== 基础牌型伤害规则（职业/街头风格命名，用于「牌型/伤害规则」界面）=====
 const BASE_COMBO_RULES = [
-  { name: "单张", rule: "伤害总和 × 1.0" },
-  { name: "搭档", rule: "伤害总和 × 1.5（2张同职业）" },
-  { name: "双组", rule: "伤害总和 × 2.0（两对同职业）" },
-  { name: "小队", rule: "伤害总和 × 2.5（3张同职业）" },
-  { name: "核心队", rule: "伤害总和 × 4.0（3+2 职业组合）" },
-  { name: "大队", rule: "伤害总和 × 5.0（4张同职业）" },
+  { name: "单张", rule: "伤害总和 × 1.0（通用牌不计入牌型）" },
+  { name: "搭档", rule: "伤害总和 × 1.3（2张同职业同流派/属性；通用牌不计入）" },
+  { name: "双组", rule: "伤害总和 × 1.6（两对同职业同流派/属性；通用牌不计入）" },
+  { name: "小队", rule: "伤害总和 × 2.0（3张同职业同流派/属性；通用牌不计入）" },
+  { name: "核心队", rule: "伤害总和 × 2.8（3+2 同职业同流派/属性组合；通用牌不计入）" },
+  { name: "大队", rule: "伤害总和 × 3.5（4张同职业同流派/属性；通用牌不计入）" },
 ];
 
 // 程序员代码牌组合规则说明
-const CODE_COMBO_RULES_TEXT = "敲代码=1张等效，重构代码=2张等效。2张等效：眩晕；3张：+20伤害+眩晕；4张：+30伤害+眩晕；5张：+50伤害+眩晕。";
+const CODE_COMBO_RULES_TEXT = "敲代码=1张等效，重构代码=2张等效。2张等效：眩晕+8伤害；3张：+18伤害+眩晕；4张：+32伤害+眩晕；5张：+50伤害+眩晕。";
 
 // ===== 隐藏跨职业组合系统 =====
 // 这些组合需要特定卡牌才能触发，不是任意该职业卡牌都可以
@@ -135,7 +135,7 @@ const HIDDEN_COMBOS = [
       dog: ["dog_bark", "dog_bite"]
     },
     minCards: 3,
-    effect: { damageMultiplier: 2.5, stun: true },
+    effect: { damageMultiplier: 2.0, stun: true },
     discovered: false,
     icon: "🐕‍🦺",
     hint: "需要：流氓攻击牌 + 狗叫/咬牌（共3张以上）"
@@ -152,7 +152,7 @@ const HIDDEN_COMBOS = [
       teacher: ["teacher_lecture", "teacher_homework", "teacher_redpen"]
     },
     minCards: 3,
-    effect: { damageMultiplier: 3, confusion: true },
+    effect: { damageMultiplier: 2.5, confusion: true },
     discovered: false,
     icon: "📹",
     hint: "需要：程序员代码牌 + 老师说教牌（共3张以上）"
@@ -169,7 +169,7 @@ const HIDDEN_COMBOS = [
       dog: ["dog_bark", "dog_tail"]
     },
     minCards: 3,
-    effect: { damageMultiplier: 2, shield: 20 },
+    effect: { damageMultiplier: 1.8, shield: 20 },
     discovered: false,
     icon: "🛡️",
     hint: "需要：保安控制牌 + 狗叫/摇尾牌（共3张以上）"
@@ -203,7 +203,7 @@ const HIDDEN_COMBOS = [
       dog: ["dog_tail", "dog_fetch", "dog_goodboy"]
     },
     minCards: 2,
-    effect: { damageMultiplier: 1.8, draw: 2 },
+    effect: { damageMultiplier: 1.6, draw: 2 },
     discovered: false,
     icon: "🎮",
     hint: "需要：程序员代码牌 + 狗辅助牌（共2张以上）"
@@ -220,7 +220,7 @@ const HIDDEN_COMBOS = [
       teacher: ["teacher_lecture", "teacher_homework"]
     },
     minCards: 2,
-    effect: { damageMultiplier: 2, taunt: true },
+    effect: { damageMultiplier: 1.8, taunt: true },
     discovered: false,
     icon: "🏫",
     hint: "需要：保安控制牌 + 老师说教牌（共2张以上）"
@@ -237,7 +237,7 @@ const HIDDEN_COMBOS = [
       hooligan: ["hooligan_punch", "hooligan_kick", "hooligan_combo"]
     },
     minCards: 3,
-    effect: { damageMultiplier: 3.5, ignoreDefense: true },
+    effect: { damageMultiplier: 3.0, ignoreDefense: true },
     discovered: false,
     icon: "💥",
     hint: "需要：保安武器牌 + 流氓攻击牌（共3张以上）"
@@ -255,7 +255,7 @@ const HIDDEN_COMBOS = [
       teacher: ["teacher_lecture", "teacher_homework"]
     },
     minCards: 4,
-    effect: { damageMultiplier: 4, healAll: 30, draw: 3 },
+    effect: { damageMultiplier: 3.5, healAll: 30, draw: 3 },
     discovered: false,
     icon: "🎭",
     hint: "需要：程序员代码牌 + 狗辅助牌 + 老师说教牌（共4张以上）"
@@ -273,7 +273,7 @@ const HIDDEN_COMBOS = [
       dog: ["dog_bark", "dog_bite"]
     },
     minCards: 4,
-    effect: { damageMultiplier: 5, stun: true, extraTurn: true },
+    effect: { damageMultiplier: 4.0, stun: true, extraTurn: true },
     discovered: false,
     icon: "🕶️",
     hint: "需要：保安控制牌 + 流氓攻击牌 + 狗攻击牌（共4张以上）"
@@ -292,7 +292,7 @@ const HIDDEN_COMBOS = [
       security: ["security_patrol", "security_whistle"]
     },
     minCards: 5,
-    effect: { damageMultiplier: 6, healAll: 50, shield: 30, draw: 4 },
+    effect: { damageMultiplier: 5.0, healAll: 50, shield: 30, draw: 4 },
     discovered: false,
     icon: "🌟",
     hint: "需要：四职业各至少一张特定牌（共5张以上）"
@@ -312,7 +312,7 @@ const HIDDEN_COMBOS = [
       hooligan: ["hooligan_combo", "hooligan_steal"]
     },
     minCards: 5,
-    effect: { damageMultiplier: 10, healAll: 100, stun: true, extraTurn: true },
+    effect: { damageMultiplier: 6.0, healAll: 100, stun: true, extraTurn: true },
     discovered: false,
     icon: "🌈",
     hint: "需要：五职业终极技能牌各一张（共5张以上）"
@@ -374,38 +374,60 @@ function checkHiddenCombos(cards, discoveredCombos) {
 
 // 职业显示名（用于牌型说明）
 const PROF_DISPLAY = { coder: "程序员", dog: "狗", teacher: "老师", security: "保安", hooligan: "流氓" };
+const ARCH_DISPLAY = {
+  // 优先使用卡牌自带 archetype（如：流氓=攻/守/割），否则回退到 type（attack/skill/...）
+  attack: "攻",
+  skill: "守",
+  item: "技",
+  "攻": "攻",
+  "守": "守",
+  "防": "防",
+  "控": "控",
+  "割": "割",
+  "流": "流",
+};
 
 // 牌型 + 组合技结算
 function evaluateCombo(cards, gameState) {
-  const profCount = { common: 0, coder: 0, dog: 0, teacher: 0, security: 0, hooligan: 0 };
-  
+  // 新规则：必须“同职业 + 同流派(属性)”才计入牌型
+  // - 流派优先用 c.archetype（例如：流氓=攻/守/割）
+  // - 没有 archetype 的职业，回退到 c.type（attack/skill/...）
+  const groupCount = {};
+  const groupMeta = {}; // key -> { profession, archLabel }
+
+  const normProf = (p) => (p && typeof p === "string" ? p : "common");
+  const normArch = (c) => {
+    const raw = (c && (c.archetype || c.type)) || "";
+    const label = ARCH_DISPLAY[raw] || (raw ? String(raw) : "攻");
+    return label;
+  };
+  const makeKey = (c) => `${normProf(c.profession)}:${normArch(c)}`;
+
   for (const c of cards) {
-    if (!c || !c.profession) continue;
-    if (profCount[c.profession] == null) profCount[c.profession] = 0;
-    profCount[c.profession]++;
+    if (!c) continue;
+    const prof = normProf(c.profession);
+    if (prof === "common") continue;
+    const key = makeKey(c);
+    groupCount[key] = (groupCount[key] || 0) + 1;
+    if (!groupMeta[key]) groupMeta[key] = { profession: prof, archLabel: normArch(c) };
   }
 
-  const nonCommonCounts = [
-    profCount.coder,
-    profCount.dog,
-    profCount.teacher,
-    profCount.security,
-    profCount.hooligan,
-  ];
-  
-  const totalNonCommon = nonCommonCounts.reduce((a, b) => a + b, 0);
+  const groupCounts = Object.values(groupCount);
+  const totalNonCommon = groupCounts.reduce((a, b) => a + b, 0);
   const totalCards = cards.length;
 
-  const sorted = [...nonCommonCounts].sort((a, b) => b - a);
-  const pairs = nonCommonCounts.filter((c) => c >= 2).length;
-  const hasThree = nonCommonCounts.some((c) => c >= 3);
-  const hasFour = nonCommonCounts.some((c) => c >= 4);
-  const second = sorted[1];
+  const sorted = [...groupCounts].sort((a, b) => b - a);
+  const pairs = groupCounts.filter((c) => c >= 2).length;
+  const hasThree = groupCounts.some((c) => c >= 3);
+  const hasFour = groupCounts.some((c) => c >= 4);
+  const second = sorted[1] || 0;
 
   let bestMultiplier = 1.0;
   let bestName = "单张";
   let comboReason = ""; // 用于 UI 展示：如 "2张流氓"
   const reasons = [];
+  let bestGroupTopKey = null;   // 本次牌型的“主流派组”（用于流派道具/流血叠层）
+  let bestGroupTopCount = 0;
 
   function tryUpdate(mult, name, reason) {
     if (mult > bestMultiplier) {
@@ -415,26 +437,48 @@ function evaluateCombo(cards, gameState) {
     }
   }
 
+  function getTopGroupKey(min = 2) {
+    const entries = Object.entries(groupCount)
+      .filter(([, n]) => n >= min)
+      .sort((a, b) => b[1] - a[1]);
+    return entries.length ? entries[0][0] : null;
+  }
+
   // 获取触发牌型的职业说明
-  function getProfDesc() {
+  function getGroupDesc(min = 2) {
+    const entries = Object.entries(groupCount)
+      .filter(([, n]) => n >= min)
+      .sort((a, b) => b[1] - a[1]);
     const parts = [];
-    ["coder","dog","teacher","security","hooligan"].forEach((p) => {
-      if (profCount[p] >= 2) parts.push(`${profCount[p]}张${PROF_DISPLAY[p]}`);
-    });
+    for (const [k, n] of entries) {
+      const meta = groupMeta[k];
+      const profLabel = PROF_DISPLAY[meta.profession] || meta.profession;
+      parts.push(`${n}张${profLabel}-${meta.archLabel}`);
+    }
     return parts.join("+");
   }
-  function getProfDescThree() {
-    const idx = nonCommonCounts.findIndex((c) => c >= 3);
-    const profs = ["coder","dog","teacher","security","hooligan"];
-    return idx >= 0 ? `${nonCommonCounts[idx]}张${PROF_DISPLAY[profs[idx]]}` : "";
+  function getGroupDescTop(min = 3) {
+    const entries = Object.entries(groupCount)
+      .filter(([, n]) => n >= min)
+      .sort((a, b) => b[1] - a[1]);
+    if (!entries.length) return "";
+    const [k, n] = entries[0];
+    const meta = groupMeta[k];
+    const profLabel = PROF_DISPLAY[meta.profession] || meta.profession;
+    return `${n}张${profLabel}-${meta.archLabel}`;
   }
 
   // ===== 基础牌型（职业组合，非扑克命名）=====
-  if (totalNonCommon >= 2 && pairs >= 1) tryUpdate(1.5, "搭档", getProfDesc());
-  if (pairs >= 2) tryUpdate(2.0, "双组", getProfDesc());
-  if (hasThree) tryUpdate(2.5, "小队", getProfDescThree());
-  if (hasThree && (second >= 2 || pairs >= 2)) tryUpdate(4.0, "核心队", getProfDesc());
-  if (hasFour) tryUpdate(5.0, "大队", getProfDescThree());
+  if (totalNonCommon >= 2 && pairs >= 1) tryUpdate(1.3, "搭档", getGroupDesc(2));
+  if (pairs >= 2) tryUpdate(1.6, "双组", getGroupDesc(2));
+  if (hasThree) tryUpdate(2.0, "小队", getGroupDescTop(3));
+  if (hasThree && (second >= 2 || pairs >= 2)) tryUpdate(2.8, "核心队", getGroupDesc(2));
+  if (hasFour) tryUpdate(3.5, "大队", getGroupDescTop(4));
+
+  // 记录本次牌型的“主流派组”（按牌型等级取不同阈值）
+  const need = (bestName === "小队") ? 3 : (bestName === "大队") ? 4 : (bestName === "单张") ? 999 : 2;
+  bestGroupTopKey = getTopGroupKey(need);
+  bestGroupTopCount = bestGroupTopKey ? (groupCount[bestGroupTopKey] || 0) : 0;
 
   // ===== 检查隐藏组合 =====
   const discoveredCombos = gameState?.discoveredCombos || [];
@@ -460,10 +504,45 @@ function evaluateCombo(cards, gameState) {
     }
   }
 
+  // ===== 流派道具：命中“职业-流派”牌型时，倍率再乘 N =====
+  let comboTypeExtraMult = 1.0;
+  try {
+    const items = gameState?.items || [];
+    if (bestGroupTopKey && typeof ItemUtil !== "undefined" && items && items.length) {
+      const meta = groupMeta[bestGroupTopKey];
+      if (meta) {
+        const eff = ItemUtil.calculateEffects(items, { comboTypeProfession: meta.profession, comboTypeArch: meta.archLabel }) || {};
+        const m = eff.comboTypeMults && eff.comboTypeMults[bestGroupTopKey];
+        if (typeof m === "number" && isFinite(m) && m > 0) comboTypeExtraMult *= m;
+      }
+    }
+  } catch (_) {}
+
+  // ===== 流血流派：若命中组里存在流血牌，则本回合流血叠层按“命中组张数”倍增 =====
+  let bleedStackMultiplier = 1;
+  try {
+    if (bestGroupTopKey && bestGroupTopCount >= 2) {
+      const meta = groupMeta[bestGroupTopKey];
+      if (meta && meta.archLabel === "割") {
+        const hasBleed = cards.some((c) => {
+          if (!c) return false;
+          const k = `${normProf(c.profession)}:${normArch(c)}`;
+          return k === bestGroupTopKey && (c.bleed || 0) > 0;
+        });
+        if (hasBleed) bleedStackMultiplier = Math.max(1, Math.floor(bestGroupTopCount));
+      }
+    }
+  } catch (_) {}
+
   // ===== 程序员代码牌组合（敲代码 + 重构代码）=====
   // 敲代码=1，重构代码=2，按等效数量触发
   const CODE_CARD_IDS = ["coder_code", "coder_code_master"];
-  const CODE_COMBO_TABLE = { 2: { damage: 0, stun: true }, 3: { damage: 20, stun: true }, 4: { damage: 30, stun: true }, 5: { damage: 50, stun: true } };
+  const CODE_COMBO_TABLE = {
+    2: { damage: 8, stun: true },
+    3: { damage: 18, stun: true },
+    4: { damage: 32, stun: true },
+    5: { damage: 50, stun: true },
+  };
   let codeEquivalent = 0;
   for (const c of cards) {
     if (!c || !c.id) continue;
@@ -479,12 +558,11 @@ function evaluateCombo(cards, gameState) {
     codeComboStun = effect.stun || false;
   }
 
-  // 应用隐藏组合倍率
-  const finalMultiplier = bestMultiplier * hiddenMultiplier;
-  
   // 计算总伤害：基础伤害×倍率 + 代码牌组合伤害（代码牌组合伤害不受牌型倍率影响）
   const cardDamage = cards.reduce((sum, c) => sum + (c.baseDamage || 0), 0);
-  const totalDamage = Math.floor(cardDamage * finalMultiplier + hiddenBonusDamage + codeComboDamage);
+  // finalMultiplier 会在构建完 cross-arch 组合后计算
+  let finalMultiplier = 1.0;
+  let totalDamage = 0;
 
   // 构建描述
   const reasonText = comboReason ? `牌型：${bestName}（${comboReason}）×${bestMultiplier.toFixed(1)}` : `牌型：${bestName} ×${bestMultiplier.toFixed(1)}`;
@@ -507,6 +585,54 @@ function evaluateCombo(cards, gameState) {
     const label = r.isNewlyDiscovered ? '*****' : r.combo.name;
     hiddenLines.push(`${label}×${mult}`);
   }
+
+  // ===== 跨职业同流派“组合技”（白名单，不是同流派就通用加成）=====
+  // 触发条件：同一流派下，指定职业各至少出 1 张，且两者合计张数 ≥ minTotal
+  // 效果：可以是倍率/额外伤害/额外控制等（通过 extraEffects 交给战斗层处理）
+  const CROSS_ARCH_COMBOS = [
+    // 你提到的例子：狗·攻 + 流氓·攻
+    { id: "cross_dog_hooligan_atk", name: "街头围攻", arch: "攻", professions: ["dog", "hooligan"], minTotal: 3, mult: 1.15, extraStunTurns: 1 },
+  ];
+  let crossArchMult = 1.0;
+  let crossExtraStunTurns = 0;
+  const crossLines = [];
+  try {
+    const count = {}; // `${prof}:${arch}` -> n
+    for (const c of cards) {
+      if (!c) continue;
+      const prof = normProf(c.profession);
+      if (prof === "common") continue;
+      const arch = normArch(c);
+      const k = `${prof}:${arch}`;
+      count[k] = (count[k] || 0) + 1;
+    }
+    for (const combo of CROSS_ARCH_COMBOS) {
+      const [p1, p2] = combo.professions || [];
+      if (!p1 || !p2) continue;
+      const n1 = count[`${p1}:${combo.arch}`] || 0;
+      const n2 = count[`${p2}:${combo.arch}`] || 0;
+      const total = n1 + n2;
+      if (n1 < 1 || n2 < 1) continue;
+      if (total < (combo.minTotal || 3)) continue;
+      if (typeof combo.mult === "number" && combo.mult > 0) crossArchMult *= combo.mult;
+      if (typeof combo.extraStunTurns === "number") crossExtraStunTurns = Math.max(crossExtraStunTurns, Math.floor(combo.extraStunTurns));
+      const bits = [];
+      if (combo.mult && combo.mult !== 1) bits.push(`×${combo.mult}`);
+      if (combo.extraStunTurns) bits.push(`眩晕+${combo.extraStunTurns}T`);
+      crossLines.push(`${combo.name}${bits.length ? `（${bits.join("，")}）` : ""}`);
+    }
+  } catch (_) {}
+  if (crossLines.length) {
+    reasons.push(`🤝 跨职业组合技：${crossLines.join("，")}`);
+    hiddenLines.push(...crossLines);
+  }
+
+  // 应用隐藏组合倍率
+  finalMultiplier = bestMultiplier * hiddenMultiplier;
+  // 最终倍率：基础牌型 × 隐藏组合 × 流派道具 ×（白名单）跨职业组合技
+  finalMultiplier *= comboTypeExtraMult;
+  finalMultiplier *= crossArchMult;
+  totalDamage = Math.floor(cardDamage * finalMultiplier + hiddenBonusDamage + codeComboDamage);
   const breakdownText = [baseLine, ...hiddenLines].join(' | ');
 
   return {
@@ -522,6 +648,10 @@ function evaluateCombo(cards, gameState) {
     codeComboDamage,
     codeComboStun,
     totalDamage,
+    extraEffects: {
+      bleedStackMultiplier,
+      extraStunTurns: crossExtraStunTurns,
+    },
     summary: reasons.join(" | "),
     hiddenCombos: hiddenComboResults,
     hiddenMultiplier,

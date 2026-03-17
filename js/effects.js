@@ -5,6 +5,25 @@ class EffectsManager {
     this.particles = [];
   }
 
+  // 控制提示：成功/未命中（敌人头上弹图标）
+  controlPop(opts) {
+    const { kind = "stun", ok = true } = opts || {};
+    const enemyEl = document.getElementById("enemy-section");
+    if (!enemyEl) return;
+
+    const el = document.createElement("div");
+    el.className = `control-pop ${ok ? "ok" : "miss"} ${kind}`;
+    const icon =
+      kind === "blind" ? "👁" :
+      kind === "stun" ? "🌀" :
+      kind === "weakness" ? "💔" :
+      kind === "slow" ? "🐢" :
+      "🌀";
+    el.textContent = ok ? icon : "MISS";
+    enemyEl.appendChild(el);
+    setTimeout(() => el.remove(), 900);
+  }
+
   // 屏幕抖动
   shake(heavy = false) {
     const container = document.querySelector(".container") || document.body;
@@ -76,18 +95,33 @@ class EffectsManager {
     this.shake();
   }
 
-  // 玩家受击
+  // 玩家受击（旧接口，保留兼容）
   playerHit(targetId) {
-    const slot = document.getElementById(`slot-${targetId}`);
-    if (slot) {
-      slot.classList.remove("player-hit");
-      void slot.offsetWidth;
-      slot.classList.add("player-hit");
-      setTimeout(() => slot.classList.remove("player-hit"), 300);
-    }
-    
-    // 轻微抖动
+    this.playerDamageEffect(targetId, "direct");
+  }
+
+  // 按伤害类型播放队友受伤特效：direct=物理, spell=法术, poison=中毒, burn=灼烧
+  playerDamageEffect(targetIdOrElement, damageType = "direct") {
+    const slot = typeof targetIdOrElement === "string"
+      ? document.getElementById(`slot-${targetIdOrElement}`)
+      : targetIdOrElement;
+    if (!slot) return;
+    slot.classList.remove("damage-direct", "damage-spell", "damage-poison", "damage-burn");
+    void slot.offsetWidth;
+    const cls = "damage-" + (["direct", "spell", "poison", "burn"].includes(damageType) ? damageType : "direct");
+    slot.classList.add(cls);
+    setTimeout(() => slot.classList.remove(cls), 520);
     this.shake();
+  }
+
+  // 施加 debuff 时的小特效（毒/灼烧层数增加）
+  playerDebuffEffect(targetId, kind = "poison") {
+    const slot = document.getElementById(`slot-${targetId}`);
+    if (!slot) return;
+    slot.classList.remove("debuff-applied");
+    void slot.offsetWidth;
+    slot.classList.add("debuff-applied");
+    setTimeout(() => slot.classList.remove("debuff-applied"), 320);
   }
 
   // 连击特效
@@ -97,6 +131,320 @@ class EffectsManager {
     void element.offsetWidth;
     element.classList.add("combo-flash");
     setTimeout(() => element.classList.remove("combo-flash"), 300);
+  }
+
+  // 辅助：延时 Promise
+  sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  // Boss 破坏牌型完整动画序列（返回 Promise）
+  async bossShatterSequence(opts) {
+    const {
+      bossName = "Boss",
+      cardElements = [],      // 要被破坏的 2 张牌的 DOM 元素
+      cardNames = [],
+      fullDamage = 0,
+      reducedDamage = 0,
+    } = opts || {};
+
+    // 1. 屏幕中央显示 Boss 发动技能
+    const overlay = document.createElement("div");
+    overlay.className = "boss-skill-overlay";
+    overlay.innerHTML = `
+      <div class="skill-title">💣 ${bossName} 发动技能</div>
+      <div class="skill-desc">破坏牌型：${cardNames.length ? cardNames.join("、") + " 被选中！" : "组合被打乱！"}</div>
+    `;
+    document.body.appendChild(overlay);
+    await this.sleep(900);
+    overlay.remove();
+
+    // 2. 闪电从敌人指向 2 张牌
+    const enemySection = document.getElementById("enemy-section");
+    const enemyRect = enemySection ? enemySection.getBoundingClientRect() : { left: window.innerWidth / 2 - 60, top: 60, width: 120 };
+    const fromX = enemyRect.left + enemyRect.width / 2;
+    const fromY = enemyRect.top + enemyRect.height * 0.3;
+
+    const lightningWrap = document.createElement("div");
+    lightningWrap.className = "boss-lightning";
+    document.body.appendChild(lightningWrap);
+
+    for (const el of cardElements) {
+      if (!el || !el.getBoundingClientRect) continue;
+      const rect = el.getBoundingClientRect();
+      const toX = rect.left + rect.width / 2;
+      const toY = rect.top + rect.height / 2;
+      const dx = toX - fromX;
+      const dy = toY - fromY;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+      const line = document.createElement("div");
+      line.className = "boss-lightning-line";
+      line.style.width = `${len}px`;
+      line.style.left = `${fromX}px`;
+      line.style.top = `${fromY}px`;
+      line.style.transform = `rotate(${angle}deg)`;
+      lightningWrap.appendChild(line);
+    }
+    this.shake();
+    await this.sleep(450);
+    lightningWrap.remove();
+
+    // 3. 2 张牌碎裂（慢）
+    for (const el of cardElements) {
+      if (el) el.classList.add("card-shattering");
+    }
+    await this.sleep(950);
+
+    // 4. 滚动数字：预计伤害从 fullDamage 降到 reducedDamage（突出伤害降低）
+    const turnEl = document.getElementById("turn-damage");
+    const labelEl = document.getElementById("turn-damage-label");
+    const boxEl = document.getElementById("battle-sidebar-damage-box");
+    const origLabel = labelEl ? labelEl.textContent : "";
+    if (turnEl && fullDamage > reducedDamage) {
+      if (labelEl) labelEl.textContent = "预计伤害";
+      const step = Math.max(1, Math.ceil((fullDamage - reducedDamage) / 10));
+      let cur = fullDamage;
+      while (cur > reducedDamage) {
+        cur = Math.max(reducedDamage, cur - step);
+        turnEl.textContent = `${cur} ↓ (原本 ${fullDamage})`;
+        if (boxEl) boxEl.classList.add("damage-rolling");
+        await this.sleep(90);
+        if (boxEl) boxEl.classList.remove("damage-rolling");
+      }
+      turnEl.textContent = `${reducedDamage} ↓ (原本 ${fullDamage})`;
+      if (boxEl) boxEl.classList.add("damage-rolling");
+      await this.sleep(350);
+      if (boxEl) boxEl.classList.remove("damage-rolling");
+      if (labelEl) labelEl.textContent = origLabel;
+    }
+    await this.sleep(150);
+  }
+
+  // Boss1：点燃出牌区（提示 + 小爆燃）
+  async bossBurnSlotsSequence(opts) {
+    const { bossName = "Boss", slotIndices = [], turns = 2 } = opts || {};
+    const overlay = document.createElement("div");
+    overlay.className = "boss-skill-overlay";
+    overlay.innerHTML = `
+      <div class="skill-title">🔥 ${bossName} 发动技能</div>
+      <div class="skill-desc">点燃出牌区：烧毁格子（持续 ${turns} 回合）</div>
+    `;
+    document.body.appendChild(overlay);
+    this.shake();
+
+    // 红橙射线：从敌人指向被烧毁的格子
+    try {
+      const enemySection = document.getElementById("enemy-section");
+      const enemyRect = enemySection ? enemySection.getBoundingClientRect() : { left: window.innerWidth / 2 - 60, top: 60, width: 120, height: 120 };
+      const fromX = enemyRect.left + enemyRect.width / 2;
+      const fromY = enemyRect.top + enemyRect.height * 0.45;
+
+      const beamWrap = document.createElement("div");
+      beamWrap.className = "boss-fire-beam";
+      document.body.appendChild(beamWrap);
+
+      const targets = (slotIndices || []).map((idx) => {
+        const el = document.querySelector(`.played-slot[data-slot-index="${idx}"]`);
+        return el;
+      }).filter(Boolean);
+
+      for (const el of targets) {
+        const rect = el.getBoundingClientRect();
+        const toX = rect.left + rect.width / 2;
+        const toY = rect.top + rect.height / 2;
+        const dx = toX - fromX;
+        const dy = toY - fromY;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        const line = document.createElement("div");
+        line.className = "boss-fire-beam-line";
+        line.style.width = `${len}px`;
+        line.style.left = `${fromX}px`;
+        line.style.top = `${fromY}px`;
+        line.style.transform = `rotate(${angle}deg)`;
+        beamWrap.appendChild(line);
+
+        // 终点火花粒子
+        try {
+          this.particles(toX, toY, 8, ["#ffb347", "#ff5a3d", "#ffd28a"][Math.floor(Math.random() * 3)]);
+        } catch (_) {}
+      }
+      setTimeout(() => beamWrap.remove(), 700);
+    } catch (_) {}
+
+    const wrap = document.getElementById("played-area-wrap");
+    if (wrap) {
+      wrap.classList.remove("boss-fire-pop");
+      void wrap.offsetWidth;
+      wrap.classList.add("boss-fire-pop");
+      setTimeout(() => wrap.classList.remove("boss-fire-pop"), 600);
+    }
+
+    await this.sleep(1350);
+    overlay.remove();
+  }
+
+  // 敌人攻击射线（从敌人指向目标）
+  async enemyAttackBeams(opts) {
+    const { targetElements = [], color = "red" } = opts || {};
+    const enemySection = document.getElementById("enemy-section");
+    if (!enemySection) return;
+    const enemyRect = enemySection.getBoundingClientRect();
+    const fromX = enemyRect.left + enemyRect.width * 0.35;
+    const fromY = enemyRect.top + enemyRect.height * 0.55;
+
+    const wrap = document.createElement("div");
+    wrap.className = "enemy-attack-beam";
+    document.body.appendChild(wrap);
+
+    for (const el of targetElements) {
+      if (!el || !el.getBoundingClientRect) continue;
+      const rect = el.getBoundingClientRect();
+      const toX = rect.left + rect.width / 2;
+      const toY = rect.top + rect.height / 2;
+      const dx = toX - fromX;
+      const dy = toY - fromY;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+      // 1) 轻微抖动的“能量轨迹”（多条叠加更有质感）
+      for (let i = 0; i < 2; i++) {
+        const line = document.createElement("div");
+        line.className = `enemy-attack-beam-line ${color}`;
+        const jitter = (Math.random() - 0.5) * 10;
+        line.style.width = `${len}px`;
+        line.style.left = `${fromX}px`;
+        line.style.top = `${fromY + jitter}px`;
+        line.style.transform = `rotate(${angle}deg)`;
+        wrap.appendChild(line);
+      }
+
+      // 命中特效：粒子 + 更明显的目标闪光（保留命中反馈，移除“扔球”）
+      try { this.particles(toX, toY, 10, color === "purple" ? "#b87bff" : "#ff6b6b"); } catch (_) {}
+      // 目标闪光：更明显地告诉玩家“打到谁”
+      try {
+        el.classList.remove("enemy-hit-flash");
+        void el.offsetWidth;
+        el.classList.add("enemy-hit-flash");
+        setTimeout(() => { try { el.classList.remove("enemy-hit-flash"); } catch (_) {} }, 620);
+      } catch (_) {}
+    }
+    this.shake(true);
+    await this.sleep(1050);
+    wrap.remove();
+  }
+
+  // Boss 重击/挥砍：比“能量球”更像近战打击（冲击波 + 斩击轨迹）
+  async enemyAttackSmash(opts) {
+    const { targetElements = [], color = "red" } = opts || {};
+    const enemySection = document.getElementById("enemy-section");
+    if (!enemySection) return;
+    const enemyRect = enemySection.getBoundingClientRect();
+    const fromX = enemyRect.left + enemyRect.width * 0.42;
+    const fromY = enemyRect.top + enemyRect.height * 0.58;
+
+    const wrap = document.createElement("div");
+    wrap.className = "enemy-attack-smash";
+    document.body.appendChild(wrap);
+
+    for (const el of targetElements) {
+      if (!el || !el.getBoundingClientRect) continue;
+      const rect = el.getBoundingClientRect();
+      const toX = rect.left + rect.width / 2;
+      const toY = rect.top + rect.height / 2;
+      const dx = toX - fromX;
+      const dy = toY - fromY;
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+      // 前摇：一道更粗的“斩击轨迹”（两条叠加更立体）
+      for (let i = 0; i < 2; i++) {
+        const swipe = document.createElement("div");
+        swipe.className = `enemy-smash-swipe ${color}`;
+        const jitter = (Math.random() - 0.5) * 14;
+        swipe.style.left = `${toX}px`;
+        swipe.style.top = `${toY + jitter}px`;
+        swipe.style.transform = `translate(-50%, -50%) rotate(${angle + (i === 0 ? -12 : 12)}deg)`;
+        wrap.appendChild(swipe);
+      }
+
+      // 命中：冲击波环 + 粒子
+      const ring = document.createElement("div");
+      ring.className = `enemy-smash-ring ${color}`;
+      ring.style.left = `${toX}px`;
+      ring.style.top = `${toY}px`;
+      wrap.appendChild(ring);
+
+      try { this.particles(toX, toY, 14, color === "purple" ? "#b87bff" : "#ffb347"); } catch (_) {}
+
+      // 目标闪光（沿用现有 class）
+      try {
+        el.classList.remove("enemy-hit-flash");
+        void el.offsetWidth;
+        el.classList.add("enemy-hit-flash");
+        setTimeout(() => { try { el.classList.remove("enemy-hit-flash"); } catch (_) {} }, 620);
+      } catch (_) {}
+    }
+
+    this.shake(true);
+    await this.sleep(980);
+    wrap.remove();
+  }
+
+  // Boss 举起武器砸下：上举蓄力 → 砸向目标 → 冲击波
+  async enemyAttackSlam(opts) {
+    const { targetElements = [], color = "red" } = opts || {};
+    const enemySection = document.getElementById("enemy-section");
+    if (!enemySection) return;
+    const enemyRect = enemySection.getBoundingClientRect();
+    const fromX = enemyRect.left + enemyRect.width * 0.44;
+    const fromY = enemyRect.top + enemyRect.height * 0.54;
+
+    const wrap = document.createElement("div");
+    wrap.className = "enemy-attack-slam";
+    document.body.appendChild(wrap);
+
+    for (const el of targetElements) {
+      if (!el || !el.getBoundingClientRect) continue;
+      const rect = el.getBoundingClientRect();
+      const toX = rect.left + rect.width / 2;
+      const toY = rect.top + rect.height / 2;
+      const dx = toX - fromX;
+      const dy = toY - fromY;
+
+      // 武器：先上举再砸下（用 CSS 变量控制位移）
+      const weapon = document.createElement("div");
+      weapon.className = `enemy-slam-weapon ${color}`;
+      weapon.style.left = `${fromX}px`;
+      weapon.style.top = `${fromY}px`;
+      weapon.style.setProperty("--tx", `${dx}px`);
+      weapon.style.setProperty("--ty", `${dy}px`);
+      wrap.appendChild(weapon);
+
+      // 命中：冲击波环 + 粒子（延迟到“砸下”命中帧附近）
+      setTimeout(() => {
+        try {
+          const ring = document.createElement("div");
+          ring.className = `enemy-smash-ring ${color}`;
+          ring.style.left = `${toX}px`;
+          ring.style.top = `${toY}px`;
+          wrap.appendChild(ring);
+        } catch (_) {}
+        try { this.particles(toX, toY, 16, color === "purple" ? "#b87bff" : "#ffb347"); } catch (_) {}
+        try {
+          el.classList.remove("enemy-hit-flash");
+          void el.offsetWidth;
+          el.classList.add("enemy-hit-flash");
+          setTimeout(() => { try { el.classList.remove("enemy-hit-flash"); } catch (_) {} }, 620);
+        } catch (_) {}
+      }, 520);
+    }
+
+    // 更重的震屏节奏：命中时再抖一次
+    this.shake(true);
+    setTimeout(() => { try { this.shake(true); } catch (_) {} }, 520);
+    await this.sleep(980);
+    wrap.remove();
   }
 
   // 组合技触发特效

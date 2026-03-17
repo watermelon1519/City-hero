@@ -282,11 +282,11 @@ const ITEMS_DB = {
     type: "profession",
     rarity: "legendary",
     profession: "hooligan",
-    description: "「组合拳」次数 +2",
-    detail: "【传奇】流氓爆发神器\n「组合拳」4次→6次\n总伤害20→30\n超级爆发",
+    description: "「组合拳」流血 +6",
+    detail: "【传奇】流氓流血神器\n「组合拳」流血 +6\n让持续伤害更稳定（克制厚血Boss）",
     effect: (state) => {
       if (state.cardProfession === "hooligan" && state.cardId === "hooligan_combo") {
-        return { hitCountBonus: 2 };
+        return { bleedBonus: 6 };
       }
       return {};
     },
@@ -417,6 +417,18 @@ const ITEMS_DB = {
       return { turnDrawBonus: 1 };
     },
   },
+  control_amplifier: {
+    id: "control_amplifier",
+    name: "📡 控制增幅器",
+    icon: "📡",
+    type: "utility",
+    rarity: "rare",
+    description: "控制命中率 +30%（用于对抗 Boss 免控）",
+    detail: "【稀有】控场强化道具\n你的眩晕类控制对 Boss 更容易生效\n（用于对抗 Boss 的 80% 免控）",
+    effect: () => {
+      return { controlChanceBonus: 0.30 };
+    },
+  },
   dice: {
     id: "dice",
     name: "幸运骰子",
@@ -484,6 +496,8 @@ const ItemUtil = {
       handSizeBonus: 0,
       goldBonus: 0,
       preserveCombo: 0,
+      // 流派倍率：key = `${profession}:${archLabel}`
+      comboTypeMults: {},
     };
 
     for (const itemId of items) {
@@ -499,6 +513,12 @@ const ItemUtil = {
             effects.goldBonus += itemEffects[key];
           } else if (key === "preserveCombo") {
             effects.preserveCombo = Math.max(effects.preserveCombo, itemEffects[key]);
+          } else if (key === "comboTypeMults" && itemEffects[key] && typeof itemEffects[key] === "object") {
+            for (const k in itemEffects[key]) {
+              const v = itemEffects[key][k];
+              if (typeof v !== "number") continue;
+              effects.comboTypeMults[k] = (effects.comboTypeMults[k] || 1) * v;
+            }
           } else {
             effects[key] = itemEffects[key];
           }
@@ -509,6 +529,50 @@ const ItemUtil = {
     return effects;
   },
 };
+
+// ===== 流派徽记道具（通用：命中某职业某流派的牌型时，牌型倍率再乘 N）=====
+// 说明：
+// - key = `${profession}:${archLabel}`，其中 archLabel 是 evaluateCombo 里的流派标签（攻/守/割/技...）
+// - 目前先为每个职业生成 4 个基础流派（攻/守/割/技），后续你加更多流派只要扩展列表即可
+(() => {
+  try {
+    const PROFS = ["hooligan", "dog", "coder", "teacher", "security"];
+    const PROF_NAME = { hooligan: "流氓", dog: "狗", coder: "程序员", teacher: "老师", security: "保安" };
+    // 每职业的默认流派（可按你的预设继续扩展）
+    const PROF_ARCHS = {
+      hooligan: ["攻", "防", "控", "割", "技"],
+      dog: ["攻", "守", "控", "流", "技"],
+      coder: ["攻", "防", "控", "技"],
+      teacher: ["攻", "防", "控", "技"],
+      security: ["攻", "防", "控", "技"],
+    };
+    const ARCH_ICON = { "攻": "🗡️", "守": "🛡️", "防": "🛡️", "控": "🌀", "割": "🩸", "流": "☠️", "技": "✨" };
+    for (const p of PROFS) {
+      const archs = PROF_ARCHS[p] || ["攻", "防", "控", "技"];
+      for (const a of archs) {
+        const id = `sigil_${p}_${a}`;
+        if (ITEMS_DB[id]) continue;
+        ITEMS_DB[id] = {
+          id,
+          name: `${ARCH_ICON[a] || "🏷️"} ${PROF_NAME[p] || p}-${a}徽记`,
+          icon: `${ARCH_ICON[a] || "🏷️"}`,
+          type: "combo",
+          rarity: "rare",
+          description: `命中「${PROF_NAME[p] || p}-${a}」牌型时，倍率 ×1.5`,
+          detail: `【流派】强化特定流派的牌型倍率\n当本回合命中「${PROF_NAME[p] || p}-${a}」牌型（同职业同流派）时：\n最终牌型倍率再 ×1.5\n用于走纯流派构筑`,
+          effect: (state) => {
+            const prof = state?.comboTypeProfession;
+            const arch = state?.comboTypeArch;
+            if (prof === p && arch === a) {
+              return { comboTypeMults: { [`${p}:${a}`]: 1.5 } };
+            }
+            return {};
+          },
+        };
+      }
+    }
+  } catch (_) {}
+})();
 
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { ITEMS_DB, RARITY_COLORS, ItemUtil };
