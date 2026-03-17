@@ -550,7 +550,7 @@ class Game {
               els.forEach((el) => {
                 if (!el || !el.getBoundingClientRect) return;
                 const r = el.getBoundingClientRect();
-                const pad = 8;
+                const pad = el.closest && el.closest("#hand-container") ? 14 : 8;
                 const hole = document.createElement("div");
                 hole.className = "tutorial-spot-hole";
                 hole.style.left = `${Math.max(0, r.left - pad)}px`;
@@ -566,7 +566,7 @@ class Game {
               els.forEach((el) => {
                 if (!el || !el.getBoundingClientRect) return;
                 const r = el.getBoundingClientRect();
-                const pad = 8;
+                const pad = el.closest && el.closest("#hand-container") ? 14 : 8;
                 const box = document.createElement("div");
                 box.className = "tutorial-highlight";
                 box.style.left = `${Math.max(0, r.left - pad)}px`;
@@ -594,63 +594,74 @@ class Game {
         } catch (_) {}
 
         // 重新定位教学框：尽量不遮挡当前高亮目标
+        // 手牌/屏幕下方目标：说明框必须固定顶部，否则 clamp 会把框挤到手牌上（z-index 高于聚光灯洞，把高亮盖住）
         try {
           const box = overlay.querySelector(".tutorial-box");
           if (box) {
-            // 先恢复成可测量状态
-            box.style.left = "50%";
-            box.style.top = "24px";
             box.style.right = "";
             box.style.bottom = "";
-            box.style.transform = "translateX(-50%)";
-
             const margin = 12;
             const r = targets[0].getBoundingClientRect();
             const bw = box.offsetWidth || 520;
             const bh = box.offsetHeight || 180;
             const vw = window.innerWidth;
             const vh = window.innerHeight;
-
-            const spaces = {
-              top: r.top,
-              bottom: vh - r.bottom,
-              left: r.left,
-              right: vw - r.right,
-            };
-
-            // 优先：放在目标下方（不挡按钮），其次上方，再其次左/右
-            let pos = "bottom";
-            if (spaces.bottom >= bh + margin) pos = "bottom";
-            else if (spaces.top >= bh + margin) pos = "top";
-            else if (spaces.right >= bw + margin) pos = "right";
-            else if (spaces.left >= bw + margin) pos = "left";
-            else pos = "bottom";
-
             const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
-            if (pos === "bottom" || pos === "top") {
-              // 横向居中对齐目标
-              let left = r.left + r.width / 2 - bw / 2;
-              left = clamp(left, 8, vw - bw - 8);
-              const top = pos === "bottom" ? (r.bottom + margin) : (r.top - bh - margin);
-              box.style.left = `${left}px`;
-              box.style.top = `${clamp(top, 8, vh - bh - 8)}px`;
-              box.style.transform = "none";
-            } else if (pos === "right") {
-              const left = r.right + margin;
-              let top = r.top;
-              top = clamp(top, 8, vh - bh - 8);
-              box.style.left = `${clamp(left, 8, vw - bw - 8)}px`;
-              box.style.top = `${top}px`;
-              box.style.transform = "none";
+            const isHand =
+              targets.some((t) => t && typeof t.closest === "function" && t.closest("#hand-container"));
+            const targetLow = r.bottom > vh * 0.62;
+
+            if (isHand || targetLow) {
+              box.classList.add("tutorial-box--top-fixed");
+              box.style.left = "50%";
+              box.style.top = `${Math.max(8, margin)}px`;
+              box.style.transform = "translateX(-50%)";
+              box.style.maxHeight = "min(36vh, 300px)";
+              box.style.overflowY = "auto";
             } else {
-              // left
-              const left = r.left - bw - margin;
-              let top = r.top;
-              top = clamp(top, 8, vh - bh - 8);
-              box.style.left = `${clamp(left, 8, vw - bw - 8)}px`;
-              box.style.top = `${top}px`;
-              box.style.transform = "none";
+              box.classList.remove("tutorial-box--top-fixed");
+              box.style.maxHeight = "";
+              box.style.overflowY = "";
+              box.style.left = "50%";
+              box.style.top = "24px";
+              box.style.transform = "translateX(-50%)";
+
+              const spaces = {
+                top: r.top,
+                bottom: vh - r.bottom,
+                left: r.left,
+                right: vw - r.right,
+              };
+              let pos = "bottom";
+              if (spaces.bottom >= bh + margin) pos = "bottom";
+              else if (spaces.top >= bh + margin) pos = "top";
+              else if (spaces.right >= bw + margin) pos = "right";
+              else if (spaces.left >= bw + margin) pos = "left";
+              else pos = "bottom";
+
+              if (pos === "bottom" || pos === "top") {
+                let left = r.left + r.width / 2 - bw / 2;
+                left = clamp(left, 8, vw - bw - 8);
+                const top = pos === "bottom" ? r.bottom + margin : r.top - bh - margin;
+                box.style.left = `${left}px`;
+                box.style.top = `${clamp(top, 8, vh - bh - 8)}px`;
+                box.style.transform = "none";
+              } else if (pos === "right") {
+                const left = r.right + margin;
+                let top = r.top;
+                top = clamp(top, 8, vh - bh - 8);
+                box.style.left = `${clamp(left, 8, vw - bw - 8)}px`;
+                box.style.top = `${top}px`;
+                box.style.transform = "none";
+              } else {
+                const left = r.left - bw - margin;
+                let top = r.top;
+                top = clamp(top, 8, vh - bh - 8);
+                box.style.left = `${clamp(left, 8, vw - bw - 8)}px`;
+                box.style.top = `${top}px`;
+                box.style.transform = "none";
+              }
             }
           }
         } catch (_) {}
@@ -1228,7 +1239,7 @@ class Game {
         for (let i = 0; i < 3; i++) deck.push("coder_code");
         deck.push("coder_bug", "coder_coffee", "coder_refactor");
       } else if (prof === "dog") {
-        deck.push("dog_bark", "dog_bite", "dog_tail", "dog_guard", "dog_detox", "dog_fetch");
+        deck.push("dog_bark", "dog_bite", "dog_tail", "dog_guard", "dog_detox", "dog_fetch", "dog_roar");
       } else if (prof === "teacher") {
         deck.push("teacher_lecture", "teacher_homework", "teacher_ruler", "teacher_redpen");
       } else if (prof === "security") {
@@ -1294,7 +1305,7 @@ class Game {
         for (let i = 0; i < 3; i++) this.deck.push("coder_code");
         this.deck.push("coder_bug", "coder_coffee", "coder_refactor");
       } else if (prof === "dog") {
-        this.deck.push("dog_bark", "dog_bite", "dog_tail", "dog_guard", "dog_detox", "dog_fetch");
+        this.deck.push("dog_bark", "dog_bite", "dog_tail", "dog_guard", "dog_detox", "dog_fetch", "dog_roar");
       } else if (prof === "teacher") {
         this.deck.push("teacher_lecture", "teacher_homework", "teacher_ruler", "teacher_redpen");
       } else if (prof === "security") {
@@ -1508,6 +1519,70 @@ class Game {
       return Array.isArray(this.unlockedItems) && this.unlockedItems.includes(itemId);
     } catch (_) {
       return true;
+    }
+  }
+
+  /** 商店/随机事件：仅通用、连击/爽感/辅助类，或当前编队职业的专属道具 */
+  getShopAndEventItemPool() {
+    const team = new Set(this.selectedProfessions || []);
+    const skip = new Set(["coupon_book", "hero_medal"]);
+    const pool = [];
+    try {
+      Object.keys(typeof ITEMS_DB !== "undefined" ? ITEMS_DB : {}).forEach((id) => {
+        if (skip.has(id)) return;
+        if (!this.isItemUnlocked(id)) return;
+        const it = ITEMS_DB[id];
+        if (!it) return;
+        if (it.type === "profession" && it.profession && !team.has(it.profession)) return;
+        pool.push(id);
+      });
+    } catch (_) {}
+    return pool;
+  }
+
+  pickRandomEventItemId() {
+    const pool = this.getShopAndEventItemPool();
+    if (!pool.length) return null;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  /** 发事件道具：栏满则折合金币 */
+  grantEventItemReward(context = "事件") {
+    const id = this.pickRandomEventItemId();
+    if (!id) {
+      this.gold = (this.gold || 0) + 22;
+      this.updateGoldDisplay();
+      this.log(`${context}：暂无可用道具，获得金币 +22`, "system");
+      return;
+    }
+    const cap = typeof this.getItemSlotCapacity === "function" ? this.getItemSlotCapacity() : 4;
+    const name = ITEMS_DB[id] ? ITEMS_DB[id].name : id;
+    if (!Array.isArray(this.items)) this.items = [];
+    if (this.items.length < cap) {
+      this.items.push(id);
+      if (typeof this.renderItems === "function") this.renderItems();
+      this.log(`${context}获得道具：${name}`, "player");
+    } else {
+      this.gold = (this.gold || 0) + 35;
+      this.updateGoldDisplay();
+      this.log(`${context}：道具栏已满，折合金币 +35（${name}）`, "system");
+    }
+  }
+
+  grantEventCardRewards(count = 1, context = "事件") {
+    const n = Math.max(0, Math.floor(count || 0));
+    if (!n) return;
+    const pool = this.getProfessionCardPool();
+    if (!pool.length) {
+      this.deck.push("attack");
+      this.log(`${context}获得卡牌：基础攻击`, "player");
+      return;
+    }
+    for (let i = 0; i < n; i++) {
+      const id = pool[Math.floor(Math.random() * pool.length)];
+      this.deck.push(id);
+      const nm = CARDS_DB[id] ? CARDS_DB[id].name : id;
+      this.log(`${context}获得卡牌：${nm}`, "player");
     }
   }
 
@@ -2437,7 +2512,11 @@ class Game {
       }
       if (event.effect.healAll) effects.push("💚 全队恢复生命");
       if (event.effect.damage) effects.push(`💔 受到 ${event.effect.damage} 伤害`);
-      if (event.effect.addCard) effects.push("🎴 获得一张新卡牌");
+      const ncPreview = Number(event.effect.addRandomCards) || (event.effect.addRandomCard ? 1 : 0);
+      if (ncPreview > 0) {
+        effects.push(ncPreview > 1 ? `🎴 随机卡牌 ×${ncPreview}（编队/通用）` : "🎴 随机卡牌（编队/通用）");
+      }
+      if (event.effect.addRandomItem) effects.push("🎁 随机道具（编队可用）");
       if (event.effect.buff) effects.push("⬆️ 获得增益效果");
       effectEl.innerHTML = effects.join(" | ");
     }
@@ -2461,41 +2540,46 @@ class Game {
   confirmEvent() {
     const event = this.currentEvent;
     if (event && event.effect) {
-      if (event.effect.gold !== undefined && event.effect.gold !== null) {
-        this.gold = Math.max(0, (this.gold || 0) + event.effect.gold);
+      const eff = event.effect;
+      const goldDelta = typeof eff.gold === "number" ? eff.gold : 0;
+      const payLoot =
+        !!(eff.addRandomItem || eff.addRandomCard || (typeof eff.addRandomCards === "number" && eff.addRandomCards > 0));
+      const broke = goldDelta < 0 && payLoot && (this.gold || 0) + goldDelta < 0;
+      if (broke) {
+        this.log("金币不够支付这次交换，对方算了——该给的仍给你，钱就不收了。", "system");
+      } else if (eff.gold !== undefined && eff.gold !== null) {
+        this.gold = Math.max(0, (this.gold || 0) + eff.gold);
         this.updateGoldDisplay();
       }
-      if (event.effect.healAll) {
-        const professions = this.selectedProfessions || ["coder", "dog", "hooligan"];
-        professions.forEach(p => {
+      if (eff.healAll) {
+        (this.selectedProfessions || ["hooligan"]).forEach((p) => {
           if (this.teammates[p]) {
             this.teammates[p].hp = this.teammates[p].maxHp;
             this.updateTeammateStatus(p);
           }
         });
       }
-      if (event.effect.damage) {
-        // 事件伤害：走更稳的队友伤害逻辑，避免因队友数据缺失导致直接判死
+      if (eff.damage) {
         const professions = Array.isArray(this.selectedProfessions) && this.selectedProfessions.length
           ? this.selectedProfessions
-          : (this.teammates ? Object.keys(this.teammates) : []);
+          : Object.keys(this.teammates || {});
         const alive = professions.filter((p) => {
           const t = this.teammates && this.teammates[p];
-          return t && typeof t.hp === "number" && t.hp > 0;
+          return t && t.hp > 0;
         });
-        if (alive.length && typeof this.applyDamageToTeammate === "function") {
-          const target = alive[Math.floor(Math.random() * alive.length)];
-          this.applyDamageToTeammate(target, event.effect.damage);
-        } else {
-          this.takeDamage(event.effect.damage);
+        if (alive.length && this.applyDamageToTeammate) {
+          this.applyDamageToTeammate(alive[Math.floor(Math.random() * alive.length)], eff.damage);
+        } else if (this.takeDamage) {
+          this.takeDamage(eff.damage);
         }
       }
-      if (event.effect.addCard) {
-        // 随机添加一张卡牌
-        const allCards = Object.keys(CARDS_DB);
-        const randomCard = allCards[Math.floor(Math.random() * allCards.length)];
-        this.deck.push(randomCard);
-        this.log(`获得卡牌：${CARDS_DB[randomCard].name}`, "player");
+      if (eff.addRandomItem) this.grantEventItemReward("事件");
+      const cardN = typeof eff.addRandomCards === "number" ? eff.addRandomCards : eff.addRandomCard ? 1 : 0;
+      if (cardN > 0) this.grantEventCardRewards(cardN, "事件");
+      if (eff.buff === "damage" && eff.value) {
+        this._eventRunDamageBuff = Math.max(1, Number(eff.value) || 1);
+        this._eventBuffTipShown = false;
+        this.log(`下一场战斗我方造成伤害 ×${this._eventRunDamageBuff}（事件增益）`, "combo");
       }
     }
     
@@ -2568,7 +2652,10 @@ class Game {
     }
     
     // 随机生成道具（价格按稀有度落在设计文档区间）
-    const itemPool = Object.keys(ITEMS_DB).filter((id) => this.isItemUnlocked(id));
+    let itemPool = this.getShopAndEventItemPool();
+    if (itemPool.length < 4) {
+      itemPool = Object.keys(ITEMS_DB).filter((id) => this.isItemUnlocked(id));
+    }
     for (let i = 0; i < 2; i++) {
       const itemId = itemPool[Math.floor(Math.random() * itemPool.length)];
       const item = ITEMS_DB[itemId];
@@ -3434,6 +3521,10 @@ class Game {
   // 战斗结果回调（由 battle.js 调用）
   onBattleResult(win) {
     try {
+      this._eventRunDamageBuff = 1;
+      this._eventBuffTipShown = false;
+    } catch (_) {}
+    try {
       this.clearPlayedSlotBattleEffects();
     } catch (_) {}
     if (win) {
@@ -3551,6 +3642,8 @@ class Game {
   }
 
   getRandomItemId() {
+    const pool = this.getShopAndEventItemPool();
+    if (pool.length) return pool[Math.floor(Math.random() * pool.length)];
     const ids = Object.keys(typeof ITEMS_DB !== "undefined" ? ITEMS_DB : {}).filter((id) => this.isItemUnlocked(id));
     return ids.length ? ids[Math.floor(Math.random() * ids.length)] : null;
   }
@@ -3733,6 +3826,7 @@ class Game {
         deck.push("dog_guard");
         deck.push("dog_detox");
         deck.push("dog_fetch");
+        deck.push("dog_roar");
       } else if (prof === "teacher") {
         // 老师：控制+削弱
         deck.push("teacher_lecture");
@@ -3775,6 +3869,15 @@ class Game {
         if (card && profession !== "common" && profession !== "joker" && !professionActive) {
           cardEl.classList.add("dead-card");
           cardEl.title = "该职业已阵亡，本回合此牌不会生效";
+        }
+
+        // 卡牌等级角标（商店升级后 Lv.2 / Lv.3）
+        const cardLevel = this.getCardLevel(cardId);
+        if (cardLevel > 1) {
+          const levelBadge = document.createElement("div");
+          levelBadge.className = "card-level-badge";
+          levelBadge.textContent = `Lv.${cardLevel}`;
+          cardEl.appendChild(levelBadge);
         }
 
         // 若该单体治疗牌已绑定目标，显示 badge

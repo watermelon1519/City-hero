@@ -645,7 +645,7 @@ body {
 .tutorial-highlight-layer {
   position: fixed;
   inset: 0;
-  z-index: 30001;
+  z-index: 30004;
   pointer-events: none;
 }
 .tutorial-highlight {
@@ -726,6 +726,12 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+.tutorial-box--top-fixed {
+  -webkit-overflow-scrolling: touch;
+}
+.tutorial-box--top-fixed .tutorial-text {
+  font-size: 13px;
 }
 
 /* ===== 存档弹窗 ===== */
@@ -2129,6 +2135,19 @@ body {
 .card-archetype-badge[data-arch="割"] { background: rgba(255, 77, 109, 0.7); }
 .card-archetype-badge[data-arch="流"] { background: rgba(39, 174, 96, 0.7); }
 .card-archetype-badge[data-arch="技"] { background: rgba(155, 89, 182, 0.7); }
+.card-archetype-badge[data-arch="辅"] { background: rgba(241, 196, 15, 0.7); }
+
+.card-level-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 10px;
+  color: #ffd93d;
+  font-weight: bold;
+}
 
 .card-badge {
   position: absolute;
@@ -3473,6 +3492,13 @@ button:disabled:hover,
   font-weight: bold;
   color: #fff;
   flex: 1;
+}
+
+.tooltip-level {
+  font-size: 12px;
+  color: #ffd93d;
+  margin-left: 6px;
+  font-weight: normal;
 }
 
 .tooltip-cost {

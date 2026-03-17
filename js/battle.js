@@ -361,7 +361,9 @@ class BattleSystem {
 
         if (card.shield) {
           if (typeof this.game.addShield === "function") {
-            this.game.addShield("warrior", card.shield, card.name);
+            const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
+            const shieldMult = 1 + (level - 1) * 0.5;
+            this.game.addShield("warrior", Math.floor((card.shield || 0) * shieldMult), card.name);
           }
         }
 
@@ -563,7 +565,17 @@ class BattleSystem {
 
       // 护甲：减免本回合伤害（尤其用于第4层 Boss）
       const armor = this.enemy.armor || 0;
-      const raw = result.totalDamage;
+      let raw = result.totalDamage;
+      try {
+        const eb = this.game && this.game._eventRunDamageBuff;
+        if (eb && eb > 1) {
+          raw = Math.max(0, Math.floor(raw * eb));
+          if (!this.game._eventBuffTipShown) {
+            this.game._eventBuffTipShown = true;
+            this.game.log(`☕ 事件增益：本战伤害 ×${eb}`, "combo");
+          }
+        }
+      } catch (_) {}
       const dealt = Math.max(0, raw - armor);
       if (armor > 0) {
         this.game.log(`🛡️ ${this.enemy.name} 护甲减免 ${armor}，实际受到 ${dealt} 伤害`, "system");
@@ -689,7 +701,7 @@ class BattleSystem {
         return;
       }
 
-      // 收集本回合打出的牌的「过牌」「回收」「debuff」效果
+      // 收集本回合打出的牌的「过牌」「回收」「debuff」效果（卡牌等级 Lv1=1.0 / Lv2=1.5 / Lv3=2.0 倍）
       let totalDraw = 0;
       let totalRetrieve = 0;
       let cleanse = 0;
@@ -697,23 +709,27 @@ class BattleSystem {
       let stealGold = 0;
       const debuffs = { stun: 0, slow: 0, weakness: 0, blind: 0 };
       for (let i = 0; i < cardsToResolve.length; i++) {
-        const card = CARDS_DB[cardsToResolve[i]];
+        const cardId = cardsToResolve[i];
+        const card = CARDS_DB[cardId];
         if (!card || !this.game.isProfessionActive(card.profession || "common")) continue;
+        const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
+        const levelMult = 1 + (level - 1) * 0.5;
+        const controlTurns = (baseTurns) => Math.max(1, Math.floor((baseTurns || 1) * levelMult));
         let draw = 0;
-        if (card.draw) draw += card.draw;
-        if (card.discardAndDraw) draw += card.discardAndDraw;
+        if (card.draw) draw += Math.max(0, Math.floor((card.draw || 0) * levelMult));
+        if (card.discardAndDraw) draw += Math.max(0, Math.floor((card.discardAndDraw || 0) * levelMult));
         // 功能饮料：每有 1 个道具，本回合每打出 1 张程序员卡，下回合额外 +1 抽
         if (card.profession === "coder" && this.game && Array.isArray(this.game.items)) {
           const drinkCount = this.game.items.filter((id) => id === "energy_drink").length;
           if (drinkCount > 0) draw += drinkCount;
         }
         totalDraw += draw;
-        if (card.retrieve) totalRetrieve += card.retrieve;
-        if (card.cleanse) cleanse = Math.max(cleanse, Math.floor(card.cleanse || 0));
-        if (card.steal) stealGold += Math.max(0, Math.floor(card.steal || 0));
+        if (card.retrieve) totalRetrieve += Math.max(0, Math.floor((card.retrieve || 0) * levelMult));
+        if (card.cleanse) cleanse = Math.max(cleanse, Math.floor((card.cleanse || 0) * levelMult));
+        if (card.steal) stealGold += Math.max(0, Math.floor((card.steal || 0) * levelMult));
         if (card.bleed) {
-          // 组合拳等：流血叠加；可被道具进一步提升
-          let add = Math.max(0, Math.floor(card.bleed || 0));
+          // 组合拳等：流血叠加；可被道具进一步提升；等级提升基础流血量
+          let add = Math.max(0, Math.floor((card.bleed || 0) * levelMult));
           try {
             if (typeof ItemUtil !== "undefined" && this.game && Array.isArray(this.game.items)) {
               const eff = ItemUtil.calculateEffects(this.game.items, { cardProfession: card.profession, cardId: card.id }) || {};
@@ -722,10 +738,10 @@ class BattleSystem {
           } catch (_) {}
           bleed += add;
         }
-        if (card.stun) debuffs.stun = Math.max(debuffs.stun, 1);
-        if (card.slow) debuffs.slow = Math.max(debuffs.slow, card.slow);
-        if (card.weakness) debuffs.weakness = Math.max(debuffs.weakness, card.weakness);
-        if (card.blind) debuffs.blind = Math.max(debuffs.blind, 1);
+        if (card.stun) debuffs.stun = Math.max(debuffs.stun, controlTurns(1));
+        if (card.slow) debuffs.slow = Math.max(debuffs.slow, controlTurns(card.slow));
+        if (card.weakness) debuffs.weakness = Math.max(debuffs.weakness, controlTurns(card.weakness));
+        if (card.blind) debuffs.blind = Math.max(debuffs.blind, controlTurns(1));
       }
       this.drawForNextTurn = totalDraw;
       if (totalDraw > 0) this.game.log(`过牌：下回合多抽 ${totalDraw} 张`, "system");

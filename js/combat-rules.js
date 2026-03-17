@@ -13,10 +13,11 @@ const FLOORS = [
     ],
     boss: { id: "boss_gang", name: "黑帮老大", hp: 420, atk: 12, icon: "🕶️", aiType: "boss1" },
     events: [
-      { id: "alley_cat", name: "巷子里的猫", icon: "🐱", description: "一只流浪猫向你讨食，你给了点钱。", effect: { gold: 15 } },
-      { id: "street_vendor", name: "路边摊", icon: "🍜", description: "深夜的路边摊飘来香味，你买了一份。", effect: { gold: -10, healAll: true } },
-      { id: "police_patrol", name: "警察巡逻", icon: "🚔", description: "警车驶过，你被盘问后放行。", effect: { gold: 5 } },
+      { id: "alley_cat", name: "巷子里的猫", icon: "🐱", description: "喂完猫，它蹭你时你突然想通了一招。", effect: { gold: 8, addRandomCard: true } },
+      { id: "street_vendor", name: "路边摊", icon: "🍜", description: "深夜的路边摊飘来香味，老板送了你个小玩意儿。", effect: { gold: -10, healAll: true, addRandomItem: true } },
+      { id: "police_patrol", name: "警察巡逻", icon: "🚔", description: "盘问后放行，还送了个治安宣传小礼品（居然有用）。", effect: { gold: 5, addRandomItem: true } },
       { id: "mugged", name: "被抢", icon: "😱", description: "暗巷里有人抢了你的钱包！", effect: { gold: -25 } },
+      { id: "dumpster", name: "翻垃圾箱", icon: "🗑️", description: "捡到还能用的装备。", effect: { addRandomItem: true } },
     ],
     bgColor: "#1a1a2e",
     accentColor: "#e94560"
@@ -34,10 +35,11 @@ const FLOORS = [
     ],
     boss: { id: "boss_principal", name: "恶魔校长", hp: 340, atk: 14, icon: "👔", aiType: "boss2_poison" },
     events: [
-      { id: "exam_paper", name: "掉落的试卷", icon: "📄", description: "捡到试卷交给失主，对方酬谢。", effect: { gold: 25 } },
-      { id: "vending_machine", name: "自动贩卖机", icon: "🥤", description: "投币后卡住了，钱没了。", effect: { gold: -15 } },
-      { id: "pe_class", name: "体育课器材室", icon: "🏀", description: "借到器材，锻炼了一下。", effect: { healAll: true } },
-      { id: "detention", name: "被留堂", icon: "📚", description: "莫名其妙被留堂，身心俱疲。", effect: { damage: 8 } },
+      { id: "exam_paper", name: "掉落的试卷", icon: "📄", description: "失主酬谢，还教你两招。", effect: { gold: 18, addRandomCard: true } },
+      { id: "vending_machine", name: "自动贩卖机", icon: "🥤", description: "卡住了钱没了，但掉出个奇怪道具。", effect: { gold: -15, addRandomItem: true } },
+      { id: "pe_class", name: "体育课器材室", icon: "🏀", description: "锻炼完神清气爽，还悟到新打法。", effect: { healAll: true, addRandomCard: true } },
+      { id: "detention", name: "被留堂", icon: "📚", description: "留堂抄书，居然抄出点心得。", effect: { damage: 8, addRandomCard: true } },
+      { id: "club_fair", name: "社团招新", icon: "🎪", description: "领了一堆传单…有一张像卡牌攻略。", effect: { addRandomCard: true, addRandomItem: true } },
     ],
     bgColor: "#16213e",
     accentColor: "#0f3460"
@@ -55,10 +57,11 @@ const FLOORS = [
     ],
     boss: { id: "boss_cto", name: "CTO大魔王", hp: 450, atk: 18, icon: "💀", aiType: "boss3_crack", armor: 8 },
     events: [
-      { id: "vending_coffee", name: "咖啡机", icon: "☕", description: "免费咖啡，精神一振！", effect: { gold: 10, buff: "damage", value: 1.1 } },
-      { id: "code_review", name: "代码审查", icon: "👀", description: "发现 Bug 修掉，拿了奖金。", effect: { gold: 35 } },
-      { id: "meeting_room", name: "会议室", icon: "🪑", description: "被拉去开会，浪费生命。", effect: { damage: 5 } },
-      { id: "overtime", name: "强制加班", icon: "💀", description: "加班到深夜，扣血。", effect: { gold: 20, damage: 12 } },
+      { id: "vending_coffee", name: "咖啡机", icon: "☕", description: "免费咖啡提神，隔壁工位落下个 U 盘（？）", effect: { gold: 10, buff: "damage", value: 1.1, addRandomItem: true } },
+      { id: "code_review", name: "代码审查", icon: "👀", description: "修 Bug 拿奖金，还学到新写法。", effect: { gold: 28, addRandomCard: true } },
+      { id: "meeting_room", name: "会议室", icon: "🪑", description: "开会摸鱼画了张战术草图。", effect: { damage: 5, addRandomCard: true } },
+      { id: "overtime", name: "强制加班", icon: "💀", description: "加班狠，但夜宵摊淘到装备。", effect: { gold: 20, damage: 12, addRandomItem: true } },
+      { id: "it_closet", name: "杂物间", icon: "📦", description: "清点库存，顺走能用的。", effect: { addRandomItem: true } },
     ],
     bgColor: "#0d1b2a",
     accentColor: "#1b263b"
@@ -76,10 +79,11 @@ const FLOORS = [
     ],
     boss: { id: "boss_hoa", name: "业委会主任", hp: 550, atk: 20, icon: "🏠", aiType: "boss4_tank" },
     events: [
-      { id: "lost_package", name: "快递驿站", icon: "📦", description: "帮邻居取件，收到小费。", effect: { gold: 20 } },
-      { id: "community_garden", name: "社区花园", icon: "🌻", description: "在花园休息了一会。", effect: { healAll: true } },
-      { id: "elevator", name: "电梯故障", icon: "🛗", description: "爬楼梯累个半死。", effect: { damage: 10 } },
-      { id: "noise", name: "邻居装修", icon: "🔨", description: "噪音攻击，掉血。", effect: { damage: 6 } },
+      { id: "lost_package", name: "快递驿站", icon: "📦", description: "帮邻居取件，小费外加一盒「神秘赠品」。", effect: { gold: 16, addRandomItem: true } },
+      { id: "community_garden", name: "社区花园", icon: "🌻", description: "休息放松，和大爷学了手养生…兼格斗。", effect: { healAll: true, addRandomCard: true } },
+      { id: "elevator", name: "电梯故障", icon: "🛗", description: "爬楼累趴，但楼梯间捡到东西。", effect: { damage: 10, addRandomItem: true } },
+      { id: "noise", name: "邻居装修", icon: "🔨", description: "太吵了！但装修队落下了工具。", effect: { damage: 6, addRandomItem: true } },
+      { id: "yard_sale", name: "跳蚤市场", icon: "🏷️", description: "淘到便宜好货。", effect: { gold: -18, addRandomItem: true } },
     ],
     bgColor: "#1a1a2e",
     accentColor: "#4a4e69"
@@ -97,10 +101,11 @@ const FLOORS = [
     ],
     boss: { id: "boss_mayor", name: "城市大Boss", hp: 650, atk: 25, icon: "👑", aiType: "boss5_control" },
     events: [
-      { id: "subway", name: "地铁站", icon: "🚇", description: "捡到别人掉的零钱。", effect: { gold: 30 } },
-      { id: "shopping_mall", name: "商场大促", icon: "🛒", description: "剁手了。", effect: { gold: -40 } },
-      { id: "park", name: "城市公园", icon: "🌳", description: "散步放松。", effect: { healAll: true } },
-      { id: "scam", name: "街头骗局", icon: "🎭", description: "被骗走了一笔钱。", effect: { gold: -30 } },
+      { id: "subway", name: "地铁站", icon: "🚇", description: "捡到零钱，还有人塞给你一张「都市传说攻略卡」。", effect: { gold: 22, addRandomCard: true } },
+      { id: "shopping_mall", name: "商场大促", icon: "🛒", description: "剁手了，但赠品里真有狠货。", effect: { gold: -35, addRandomItem: true } },
+      { id: "park", name: "城市公园", icon: "🌳", description: "散步放松，看大爷下棋悟了一招。", effect: { healAll: true, addRandomCard: true } },
+      { id: "scam", name: "街头骗局", icon: "🎭", description: "被骗钱，混乱中顺走骗子包里一件。", effect: { gold: -28, addRandomItem: true } },
+      { id: "street_performer", name: "街头表演", icon: "🎸", description: "打赏后表演者送你纪念品。", effect: { gold: -8, addRandomCard: true, addRandomItem: true } },
     ],
     bgColor: "#0f0f23",
     accentColor: "#ff6b6b"
@@ -200,7 +205,7 @@ const HIDDEN_COMBOS = [
     professions: ["coder", "dog"],
     requiredCards: {
       coder: ["coder_code", "coder_bug", "coder_coffee"],
-      dog: ["dog_tail", "dog_fetch", "dog_goodboy"]
+      dog: ["dog_tail", "dog_fetch", "dog_goodboy", "dog_roar"]
     },
     minCards: 2,
     effect: { damageMultiplier: 1.6, draw: 2 },
@@ -385,6 +390,7 @@ const ARCH_DISPLAY = {
   "控": "控",
   "割": "割",
   "流": "流",
+  "辅": "辅",
 };
 
 // 牌型 + 组合技结算
@@ -627,9 +633,17 @@ function evaluateCombo(cards, gameState) {
     hiddenLines.push(...crossLines);
   }
 
+  // 狗·咆哮：本批打出时，基础牌型倍率翻倍（暴击），再与隐藏组合/徽记/跨职业等叠乘
+  const hasDogRoar = cards.some((c) => c && c.id === "dog_roar");
+  const typeMultEffective = hasDogRoar ? bestMultiplier * 2 : bestMultiplier;
+  if (hasDogRoar) {
+    reasons.push("📢 咆哮：牌型倍率×2");
+    hiddenLines.push("咆哮×2");
+  }
+
   // 应用隐藏组合倍率
-  finalMultiplier = bestMultiplier * hiddenMultiplier;
-  // 最终倍率：基础牌型 × 隐藏组合 × 流派道具 ×（白名单）跨职业组合技
+  finalMultiplier = typeMultEffective * hiddenMultiplier;
+  // 最终倍率：基础牌型(含咆哮) × 隐藏组合 × 流派道具 ×（白名单）跨职业组合技
   finalMultiplier *= comboTypeExtraMult;
   finalMultiplier *= crossArchMult;
   totalDamage = Math.floor(cardDamage * finalMultiplier + hiddenBonusDamage + codeComboDamage);
@@ -677,11 +691,25 @@ function getBoss(floorNum) {
   return floor.boss;
 }
 
+// 全层混入：卡牌/道具类事件（与楼层事件合并抽取）
+const RANDOM_EVENT_REWARDS = [
+  { id: "ev_insight", name: "灵光一闪", icon: "💡", description: "突然想通了一记招式。", effect: { addRandomCard: true } },
+  { id: "ev_scavenge", name: "拾荒", icon: "🧰", description: "捡到一件还算趁手的家伙。", effect: { addRandomItem: true } },
+  { id: "ev_bounty", name: "赏金小单", icon: "🎯", description: "完成委托，报酬里夹着一张笔记（像是牌谱）。", effect: { gold: 26, addRandomCard: true } },
+  { id: "ev_trade", name: "二手摊", icon: "🔄", description: "掏钱淘了件装备。", effect: { gold: -14, addRandomItem: true } },
+  { id: "ev_found_pack", name: "无人认领", icon: "📦", description: "招领处正好有你能用的包裹。", effect: { addRandomItem: true } },
+  { id: "ev_spar", name: "友好切磋", icon: "🤝", description: "交流完浑身舒畅，还学了手。", effect: { healAll: true, addRandomCard: true } },
+  { id: "ev_risk_loot", name: "险中夺宝", icon: "⚡", description: "受了点冲击，但摸到了货。", effect: { damage: 8, addRandomItem: true } },
+  { id: "ev_double", name: "双喜", icon: "✨", description: "金币、小抄和装备都有一点。", effect: { gold: 18, addRandomCard: true, addRandomItem: true } },
+  { id: "ev_pit_stop", name: "路边补给", icon: "🥤", description: "小卖部顺手买了点实用的。", effect: { gold: 10, addRandomItem: true } },
+  { id: "ev_read_twice", name: "旧书摊", icon: "📚", description: "两本旧书里各撕下一页绝招。", effect: { addRandomCards: 2 } },
+];
+
 // 获取随机事件
 function getRandomEvent(floorNum) {
   const floor = getCurrentFloor(floorNum);
-  const events = floor.events;
-  return events[Math.floor(Math.random() * events.length)];
+  const pool = [...(floor.events || []), ...RANDOM_EVENT_REWARDS];
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // 浏览器环境挂载

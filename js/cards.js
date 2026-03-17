@@ -227,6 +227,18 @@ const CARDS_DB = {
     description: "从弃牌堆回收 2 张到下回合手牌",
     detail: "【回收牌】资源循环利器\n从弃牌堆取2张，下回合直接到手牌\n与程序员牌触发「摸鱼搭档」组合"
   },
+  dog_roar: {
+    id: "dog_roar",
+    name: "咆哮",
+    icon: "📢",
+    type: "skill",
+    profession: "dog",
+    archetype: "辅",
+    cost: 2,
+    damage: 0,
+    description: "本批出牌：牌型倍率×2（暴击）",
+    detail: "【辅】辅助爆发牌\n与攻击牌同批打出时，本次结算的「基础牌型倍率」（单张/搭档/小队等）翻倍。\n不计入牌型张数配对，但会占用出牌上限。\n与隐藏组合、流派徽记等仍正常叠乘。"
+  },
   dog_goodboy: {
     id: "dog_goodboy",
     name: "好狗狗！",
@@ -528,7 +540,7 @@ const PROFESSION_COMBOS = {
   },
   dog: {
     name: "狗",
-    comboCards: ["dog_bark", "dog_bite", "dog_tail"],
+    comboCards: ["dog_bark", "dog_bite", "dog_tail", "dog_roar"],
     crossProfession: [
       { id: "cross_dog_hooligan", with: "hooligan", name: "街头恶霸", effect: "伤害×2.5 + 眩晕" },
       { id: "cross_dog_security", with: "security", name: "忠诚卫士", effect: "伤害×2 + 护盾20" }
@@ -653,10 +665,14 @@ const CardUtil = {
       document.body.appendChild(tooltip);
     }
 
+    const g = (typeof window !== "undefined") ? window.game : null;
+    const level = (g && typeof g.getCardLevel === "function" && g.getCardLevel(card.id)) || 1;
+    const levelLabel = level > 1 ? ` <span class="tooltip-level">Lv.${level}</span>` : "";
+
     // 构建详情内容
     let details = `<div class="tooltip-header">
       <span class="tooltip-icon">${card.icon}</span>
-      <span class="tooltip-name">${card.name}</span>
+      <span class="tooltip-name">${card.name}</span>${levelLabel}
     </div>`;
     
     const archRaw = card.archetype || card.type || "";
@@ -668,8 +684,11 @@ const CardUtil = {
     const archTag = archLabel ? `【${archLabel}】` : "";
     details += `<div class="tooltip-desc">${archTag ? `<span class="tooltip-arch">${archTag}</span> ` : ""}${card.description || ""}</div>`;
     
+    if (level > 1) {
+      const multPct = level === 2 ? "50%" : level === 3 ? "100%" : "";
+      if (multPct) details += `<div class="tooltip-detail">📈 升级效果：伤害/治疗/控制时长/过牌等 +${multPct}</div>`;
+    }
     if (card.detail) {
-      const g = (typeof window !== "undefined") ? window.game : null;
       const unlocked = Array.isArray(g?.unlockedProfessions) ? g.unlockedProfessions : [];
       const discovered = Array.isArray(g?.discoveredCombos) ? g.discoveredCombos : [];
       const masked = CardUtil.maskCrossComboText(card.detail, unlocked, discovered);
