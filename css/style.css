@@ -15,7 +15,7 @@ body {
     linear-gradient(180deg, #254a9b 0%, #1b2f79 40%, #111a4b 75%, #06091a 100%);
   color: #eee;
   min-height: 100vh;
-  padding: 12px;
+  padding: 8px;
   overflow-x: hidden;
 }
 
@@ -417,14 +417,48 @@ body {
 /* 顶部角色 VS 敌人行 */
 #battle-layout {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: flex-start;
 }
 
 /* 防止头部变高把按钮挤出屏幕：允许战斗页整体滚动 */
 #battle-view {
   overflow-y: auto;
-  max-height: calc(100vh - 70px);
+  max-height: calc(100vh - 40px);
+}
+
+/* 桌面端：战斗页紧凑布局，尽量保证按钮同屏可见 */
+#battle-view #played-area-wrap {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  min-height: 68px;
+}
+#battle-view #hand-section {
+  padding: 8px 10px 6px;
+}
+#battle-view .hand-label {
+  margin-bottom: 6px;
+}
+#battle-view #hand-container {
+  gap: 8px;
+  min-height: 64px;
+}
+#battle-view #pile-info {
+  padding: 6px 0 10px;
+  margin-bottom: 6px;
+}
+#battle-view #bottom-row {
+  margin-top: 4px;
+}
+#battle-view #log-section {
+  padding: 8px 10px;
+}
+#battle-view #discard-panel {
+  padding: 8px 10px;
+}
+#battle-view .section-label {
+  margin-bottom: 6px;
+  font-size: 13px;
 }
 
 #battle-sidebar {
@@ -615,7 +649,7 @@ body {
 #played-area-wrap {
   padding: 10px 12px;
   margin-bottom: 8px;
-  min-height: 100px;
+  min-height: 80px;
   position: relative;
 }
 
@@ -994,10 +1028,11 @@ body {
 }
 
 #battle-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 8px;
+  align-items: stretch;
+  margin-bottom: 4px;
 }
 
 /* 顶部信息栏 */
@@ -1012,23 +1047,25 @@ body {
   flex: 1;
   max-width: 340px;
   text-align: center;
-  padding: 10px 12px 8px;
+  padding: 6px 12px 6px;
   background: rgba(139, 0, 0, 0.3);
-  border-radius: 15px;
+  border-radius: 12px;
   border: 2px solid #8b0000;
+  position: relative;
+  overflow: hidden;
 }
 
 .enemy-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .enemy-pixel {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 8px;
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1045,19 +1082,19 @@ body {
 }
 
 .enemy-name {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: bold;
   color: #ff6b6b;
 }
 
 .enemy-layer {
-  font-size: 14px;
+  font-size: 12px;
   color: #aaa;
 }
 
 .enemy-hp-bar {
   width: 100%;
-  height: 22px;
+  height: 18px;
   background: rgba(0, 0, 0, 0.5);
   border-radius: 15px;
   overflow: hidden;
@@ -1073,7 +1110,7 @@ body {
 }
 
 .enemy-hp-text {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: bold;
 }
 
@@ -1106,11 +1143,13 @@ body {
 .debuff-badge.bleed { color: #ff4d6d; }
 
 .enemy-intent {
-  margin-top: 10px;
-  padding: 8px;
-  background: rgba(255, 68, 68, 0.2);
-  border-radius: 5px;
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: rgba(255, 68, 68, 0.16);
+  border-radius: 8px;
   color: #ff6b6b;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 /* 队友区域 */
@@ -1118,16 +1157,17 @@ body {
   flex: 1;
   display: flex;
   justify-content: space-around;
-  padding: 8px 8px;
+  padding: 6px 8px;
   background: rgba(0, 100, 150, 0.12);
   border-radius: 14px;
   border: 1px solid rgba(0, 100, 150, 0.22);
+  min-height: 0;
 }
 
 .teammate-slot {
-  width: 92px;
+  width: 84px;
   text-align: center;
-  padding: 8px;
+  padding: 6px 8px;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 10px;
   border: 2px solid rgba(255, 255, 255, 0.2);
@@ -1179,13 +1219,13 @@ body {
 
 .teammate-icon {
   font-size: 32px;
-  margin-bottom: 5px;
+  margin-bottom: 3px;
 }
 
 .teammate-name {
   font-size: 14px;
   font-weight: bold;
-  margin-bottom: 5px;
+  margin-bottom: 3px;
 }
 
 .teammate-hp {
@@ -1372,7 +1412,7 @@ body {
   display: flex;
   align-items: stretch;
   gap: 12px;
-  padding: 10px 16px;
+  padding: 6px 12px;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 10px;
   min-width: 460px;
@@ -1383,20 +1423,20 @@ body {
 .combo-panel {
   flex: 1;
   min-width: 260px;
-  padding: 10px 16px;
+  padding: 6px 12px;
   border-radius: 10px;
 }
 .combo-panel .label {
   display: block;
   font-size: 12px;
   color: #aaa;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 .combo-panel .combo-damage {
   display: block;
   font-size: 20px;
   font-weight: bold;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 .combo-panel .combo-main {
   display: block;
@@ -1415,7 +1455,7 @@ body {
 /* 本回合伤害：A × B = XXX，按档位变换颜色和大小 */
 .damage-formula-box {
   min-width: 180px;
-  padding: 8px 14px;
+  padding: 6px 12px;
   background: rgba(0, 0, 0, 0.4);
   border-radius: 10px;
   border: 2px solid rgba(255, 255, 255, 0.2);
@@ -1801,7 +1841,7 @@ body {
   gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
-  min-height: 90px;
+  min-height: 72px;
 }
 
 #hand-container.game-ended {
@@ -1963,6 +2003,12 @@ body {
   gap: 8px;
   justify-content: center;
   margin: 2px 0 6px;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  background: rgba(5, 10, 30, 0.90);
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  border-radius: 10px;
 }
 
 .action-btn,
@@ -2018,7 +2064,7 @@ body {
 }
 
 #battle-log {
-  height: 110px;
+  height: 86px;
   overflow-y: auto;
   font-size: 13px;
   font-family: monospace;
@@ -2195,10 +2241,10 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 20px;
+  padding: 6px 12px;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .status-item {
