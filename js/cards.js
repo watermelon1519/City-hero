@@ -42,8 +42,9 @@ const CARDS_DB = {
     type: "item",
     profession: "common",
     cost: 1,
-    heal: 5,
-    description: "恢复 5 点生命",
+    // 调整数值：普通药水治疗 8 血
+    heal: 8,
+    description: "恢复 8 点生命",
     detail: "拖到队友头像上使用，紧急回复"
   },
 
@@ -307,9 +308,10 @@ const CARDS_DB = {
     type: "skill",
     profession: "teacher",
     cost: 2,
-    healAll: 14,
+    // 调整：让“奶牌”回 8 血（与护盾数值更一致）
+    healAll: 8,
     shield: 8,
-    description: "全队回 14 血 + 8 护盾",
+    description: "全队回 8 血 + 8 护盾",
     detail: "【回复牌】老师的核心回复牌\n回血+护盾，保护全队\n与保安牌触发「班级秩序」组合"
   },
   teacher_failing: {

@@ -29,6 +29,8 @@
         <button id="btn-continue-game" class="start-btn" disabled>📂 继续游戏</button>
         <button id="btn-achievements" class="start-btn">🏆 成就</button>
         <button id="btn-settings" class="start-btn secondary">⚙️ 设置</button>
+        <button id="btn-items-dex" class="start-btn secondary">🎒 道具图鉴</button>
+        <button id="btn-endless-mode" class="start-btn secondary">∞ 无尽模式</button>
       </div>
 
       <!-- 难度选择（通关逐级解锁） -->
@@ -41,6 +43,18 @@
           </div>
         </div>
       </div>
+
+      <!-- 无尽模式：难度选择 -->
+      <div id="endless-difficulty-modal" class="modal hidden">
+        <div class="modal-content">
+          <h2>无尽模式难度</h2>
+          <div id="endless-difficulty-list" style="display:flex; flex-direction:column; gap:10px;"></div>
+          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+            <button id="endless-difficulty-cancel" class="secondary-btn">返回</button>
+          </div>
+        </div>
+      </div>
+
       <div class="start-footer">
         <p>v1.0.0 | 按任意键开始</p>
       </div>
@@ -74,6 +88,21 @@
       </div>
       <div class="reward-actions" style="margin-top: 16px;">
         <button id="team-build-start" class="action-btn">开始冒险</button>
+      </div>
+    </div>
+
+    <!-- 无尽模式：初始道具选择（仅难度1/2；放在 game-container 内，确保战队构建后可见） -->
+    <div id="endless-init-item-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>选择初始道具</h2>
+        <div id="endless-init-item-list" class="endless-init-item-list"></div>
+        <div id="endless-init-item-empty" style="display:none; font-size:12px; color:#aaa; margin-top:10px;">
+          当前没有已解锁道具可选，将直接开始。
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+          <button id="endless-init-item-cancel" class="secondary-btn">跳过</button>
+          <button id="endless-init-item-confirm" class="action-btn">确定</button>
+        </div>
       </div>
     </div>
 
@@ -278,6 +307,16 @@
       </div>
     </div>
 
+    <!-- 道具图鉴 -->
+    <div id="items-dex-view" class="view hidden pixel-panel">
+      <div class="combos-header">
+        <div class="combos-title pixel-title">🎒 道具图鉴</div>
+        <button id="items-dex-close" class="secondary-btn">关闭</button>
+      </div>
+      <div class="items-dex-hint">已解锁可查看，未解锁显示“？”</div>
+      <div id="item-dex-grid" class="item-dex-grid"></div>
+    </div>
+
     <!-- 战斗视图（单页核心：日志/弃牌为抽屉） -->
     <div id="battle-view" class="view battle-one-screen">
       <div id="battle-layout">
@@ -303,11 +342,6 @@
           </div>
           <div id="damage-breakdown-tooltip" class="damage-breakdown-tooltip hidden"></div>
         <div id="status-hover-tooltip" class="damage-breakdown-tooltip hidden"></div>
-                  <div class="battle-sidebar-row">
-            <span class="label">出牌区</span>
-            <span class="value" id="battle-played-count">0 / 5</span>
-          </div>
-          <div class="battle-sidebar-divider"></div>
 
           <!-- 牌库 / 弃牌（数值类挨着排列） -->
           <div id="pile-info" class="pile-info--sidebar">
@@ -365,6 +399,7 @@
           <!-- 牌桌（出牌区在上、手牌在下）：视觉合并为一个面板，不改 id，避免影响流程/Boss 技能 -->
           <div id="card-table" class="pixel-panel card-table">
             <div id="played-area-wrap" class="card-table__played">
+              <span id="battle-played-count" class="played-area-count" aria-live="polite">0/5</span>
               <div class="section-label">本回合出牌（基础最多 5 张，道具可提高）</div>
               <div id="played-container" class="played-container"></div>
             </div>
@@ -539,6 +574,7 @@
   <script src="js/battle.js?v=20260318"></script>
   <script src="js/map.js?v=20260318"></script>
   <script src="js/audio.js?v=20260318"></script>
+  <script src="js/endless.js?v=20260318"></script>
   <script src="js/game.js?v=20260318"></script>
 </body>
 </html>

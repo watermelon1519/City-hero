@@ -5,6 +5,17 @@ class Game {
     this.items = []; // 初始道具为空
     this.itemSlotCapacity = 10; // 道具栏容量（暂定上限 10）
     this.gold = 100; // 初始金币
+    // 运行模式：campaign(地图) / endless(无尽)
+    this.mode = "campaign";
+    // 无尽模式状态（仅在 mode==='endless' 时使用）
+    this.endlessDifficulty = 1; // 1~3
+    this.endlessStage = 1; // 第几关
+    this.endlessWave = 1; // 1~6（6 为 Boss）
+    this.endlessPrevWaveElite = false;
+    this.endlessShopActive = false;
+    this.endlessShopRefreshTimes = 0;
+    this.endlessInitItemId = null;
+    this._endlessContext = null;
     this.difficulty = 1;
     this.maxDifficultyUnlocked = 1;
     this.difficultiesCompleted = [];
@@ -845,6 +856,37 @@ class Game {
       settingsBtn.addEventListener('click', () => this.showSettingsModal());
     }
 
+    // 无尽模式（初始菜单入口）
+    const endlessBtn = document.getElementById('btn-endless-mode');
+    if (endlessBtn) {
+      endlessBtn.addEventListener('click', () => this.openEndlessDifficultyModal());
+    }
+
+    // 道具图鉴（从初始菜单进入）
+    const itemsDexBtn = document.getElementById('btn-items-dex');
+    if (itemsDexBtn) {
+      itemsDexBtn.addEventListener('click', () => {
+        try {
+          document.getElementById('start-screen')?.classList.add('hidden');
+          document.getElementById('game-container')?.classList.remove('hidden');
+          // 默认按“非战斗”视图恢复：关闭图鉴时会回到 map-view
+          this.view = 'map';
+          this._returnToStartScreenAfterDex = true;
+        } catch (_) {}
+        this.showItemDexView();
+      });
+    }
+
+    // 道具图鉴关闭（注意：bindEvents() 只在 initGameData 后绑定；
+    // 从初始菜单进入图鉴时还没进入游戏，所以这里也要绑定一次）
+    if (!this._itemsDexCloseBound) {
+      const itemsDexCloseBtn = document.getElementById("items-dex-close");
+      if (itemsDexCloseBtn) {
+        this._itemsDexCloseBound = true;
+        itemsDexCloseBtn.addEventListener("click", () => this.hideItemDexView());
+      }
+    }
+
     // 检查存档
     this.checkSaveData();
 
@@ -998,6 +1040,216 @@ class Game {
     if (cancel) cancel.onclick = () => modal.classList.add("hidden");
     modal.onclick = (e) => { if (e.target === modal) modal.classList.add("hidden"); };
     modal.classList.remove("hidden");
+  }
+
+  // ===== 无尽模式入口：难度选择 =====
+  openEndlessDifficultyModal() {
+    const modal = document.getElementById("endless-difficulty-modal");
+    const list = document.getElementById("endless-difficulty-list");
+    const cancel = document.getElementById("endless-difficulty-cancel");
+    if (!modal || !list) return;
+
+    list.innerHTML = "";
+    // 默认：只要难度 <= maxDifficultyUnlocked 就可选；无尽模式也不强行破坏现有解锁节奏
+    const max = Math.max(1, Math.min(3, this.maxDifficultyUnlocked || 1));
+    for (let d = 1; d <= 3; d++) {
+      const unlocked = d <= max;
+      const btn = document.createElement("button");
+      btn.className = "start-btn";
+      btn.disabled = !unlocked;
+      btn.textContent = unlocked ? `难度 ${d}` : `难度 ${d}（未解锁）`;
+      btn.onclick = () => {
+        modal.classList.add("hidden");
+        this.startEndless(d);
+      };
+      list.appendChild(btn);
+    }
+    if (cancel) cancel.onclick = () => modal.classList.add("hidden");
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add("hidden"); };
+    modal.classList.remove("hidden");
+  }
+
+  // 无尽模式启动：难度已确定，接下来进入战队选择
+  startEndless(difficulty = 1) {
+    this.mode = "endless";
+    this.endlessDifficulty = Math.max(1, Math.min(3, Math.floor(difficulty || 1)));
+
+    this.endlessStage = 1;
+    this.endlessWave = 1;
+    this.endlessPrevWaveElite = false;
+    this.endlessShopActive = false;
+    this.endlessShopRefreshTimes = 0;
+    this.endlessInitItemId = null;
+    this._endlessContext = null;
+
+    this.gameStarted = true;
+    this.isFirstBattle = false; // 无尽模式不触发“首战教程/奖励逻辑”
+    this.justFinishedFirstBattle = false;
+
+    // 新跑局重置货币与道具池
+    this.gold = 100;
+    this.items = [];
+    this.discoveredCombos = [];
+    this.tutorialBattleActive = false;
+
+    // 默认选一个已解锁职业（保证 team-build 里可点击）
+    const unlocked = Array.isArray(this.unlockedProfessions) ? this.unlockedProfessions : ["hooligan"];
+    const fallback = unlocked.includes("hooligan") ? "hooligan" : (unlocked[0] || "hooligan");
+    this.selectedProfessions = [fallback];
+
+    const startScreen = document.getElementById("start-screen");
+    if (startScreen) startScreen.classList.add("hidden");
+    const gameContainer = document.getElementById("game-container");
+    if (gameContainer) gameContainer.classList.remove("hidden");
+
+    // 进入战队构建，并把按钮文案切到“无尽”
+    this.showTeamBuildView();
+    try { document.getElementById("team-build-start").textContent = "开始无尽"; } catch (_) {}
+
+    if (window.audioManager) window.audioManager.init();
+  }
+
+  // ===== 无尽模式：初始道具选择 =====
+  openEndlessInitItemModal() {
+    const modal = document.getElementById("endless-init-item-modal");
+    const list = document.getElementById("endless-init-item-list");
+    const emptyEl = document.getElementById("endless-init-item-empty");
+    const cancel = document.getElementById("endless-init-item-cancel");
+    const confirm = document.getElementById("endless-init-item-confirm");
+    if (!modal || !list) {
+      this.startEndlessWaveBattle();
+      return;
+    }
+
+    // 从“已解锁道具”中选 1 个（unlockedItems 若没加载则回退到 isItemUnlocked）
+    let pool = [];
+    if (Array.isArray(this.unlockedItems) && this.unlockedItems.length) {
+      pool = this.unlockedItems.filter((id) => ITEMS_DB && ITEMS_DB[id]);
+    } else if (typeof this.isItemUnlocked === "function" && typeof ITEMS_DB !== "undefined") {
+      pool = Object.keys(ITEMS_DB).filter((id) => this.isItemUnlocked(id));
+    }
+
+    this.endlessInitItemId = null;
+    list.innerHTML = "";
+
+    if (emptyEl) emptyEl.style.display = pool.length ? "none" : "block";
+
+    if (confirm) confirm.disabled = pool.length > 0;
+
+    pool.forEach((id) => {
+      const it = ITEMS_DB[id];
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "endless-init-item-choice";
+      btn.dataset.itemId = id;
+      btn.textContent = `${it?.icon || "🎒"} ${it?.name || id}`;
+      btn.onclick = () => {
+        this.endlessInitItemId = id;
+        list.querySelectorAll(".endless-init-item-choice.selected").forEach((x) => x.classList.remove("selected"));
+        btn.classList.add("selected");
+        if (confirm) confirm.disabled = false;
+      };
+      list.appendChild(btn);
+    });
+
+    if (cancel) cancel.onclick = () => {
+      this.endlessInitItemId = null;
+      modal.classList.add("hidden");
+      this.items = [];
+      this.startEndlessWaveBattle();
+    };
+
+    if (confirm) confirm.onclick = () => {
+      modal.classList.add("hidden");
+      this.items = this.endlessInitItemId ? [this.endlessInitItemId] : [];
+      this.startEndlessWaveBattle();
+    };
+
+    modal.onclick = (e) => { if (e.target === modal) modal.classList.add("hidden"); };
+    modal.classList.remove("hidden");
+  }
+
+  // ===== 无尽模式：启动当前 wave / boss =====
+  startEndlessWaveBattle() {
+    const stage = this.endlessStage || 1;
+    const wave = this.endlessWave || 1;
+    const difficulty = this.endlessDifficulty || 1;
+
+    if (!window.EndlessMode || typeof window.EndlessMode.buildWaveEnemy !== "function") {
+      this.showModal("错误", "缺少 EndlessMode 脚本，无法生成敌人。");
+      return;
+    }
+
+    this.map.floor = stage;
+
+    try { this.updateFloorDisplay(); } catch (_) {}
+
+    let nodeType = "battle";
+    let enemyData = null;
+
+    if (wave < 6) {
+      enemyData = window.EndlessMode.buildWaveEnemy(stage, wave, !!this.endlessPrevWaveElite, difficulty);
+      nodeType = enemyData && enemyData.isElite ? "elite" : "battle";
+    } else {
+      enemyData = window.EndlessMode.buildBossEnemy(stage, difficulty);
+      nodeType = "boss";
+    }
+
+    this._endlessContext = {
+      stage,
+      wave,
+      isBossWave: wave === 6,
+      stageEnd: false,
+    };
+
+    const node = { type: nodeType, enemy: enemyData };
+    this.startBattleForNode(node);
+  }
+
+  // ===== 无尽模式：波次胜负回调 =====
+  onEndlessBattleResult(win) {
+    try { this._eventRunDamageBuff = 1; } catch (_) {}
+    try { this._eventBuffTipShown = false; } catch (_) {}
+    try { this.clearPlayedSlotBattleEffects(); } catch (_) {}
+
+    if (!win) {
+      if (window.audioManager) window.audioManager.defeat();
+      this.gameOver();
+      return;
+    }
+
+    // 胜利：基础金币（不展示逐波奖励弹窗）
+    let goldReward = this.enemy?.gold || 20;
+    try {
+      // 道具：收割镰刀（额外金币 +50%）
+      if (Array.isArray(this.items) && this.items.includes("reap_scythe")) {
+        const bonus = Math.floor(goldReward * 0.5);
+        if (bonus > 0) goldReward += bonus;
+      }
+    } catch (_) {}
+
+    this.gold = (this.gold || 0) + goldReward;
+    this.updateGoldDisplay();
+
+    if (window.audioManager) window.audioManager.victory();
+
+    const wave = this._endlessContext?.wave || this.endlessWave || 1;
+
+    // 普通 wave：直接下一波
+    if (wave < 6) {
+      this.endlessPrevWaveElite = !!this.enemy?.isElite;
+      this.endlessWave = wave + 1;
+      this.startEndlessWaveBattle();
+      return;
+    }
+
+    // Boss wave：显示 reward，点 reward-continue -> 商店 -> 完成下一关
+    const cardPool = this.getProfessionCardPool();
+    const dropCard = cardPool.length > 0 ? cardPool[Math.floor(Math.random() * cardPool.length)] : null;
+    const dropItem = Math.random() < 0.25 ? this.getRandomItemId() : null;
+
+    this._endlessContext.stageEnd = true;
+    this.showRewardScreen(goldReward, dropCard, dropItem);
   }
 
   // 检查存档
@@ -1156,6 +1408,8 @@ class Game {
     document.getElementById("shop-view")?.classList.add("hidden");
     document.getElementById("event-view")?.classList.add("hidden");
     view.classList.remove("hidden");
+    const startBtn = document.getElementById("team-build-start");
+    if (startBtn) startBtn.textContent = this.mode === "endless" ? "开始无尽" : "开始冒险";
     this.syncBattleTopChrome();
   }
 
@@ -1281,6 +1535,30 @@ class Game {
     const prevProfs = [...(this.selectedProfessions || [])];
     this.selectedProfessions = [...this.teamBuildSelection];
     document.getElementById("team-build-view").classList.add("hidden");
+
+    // 无尽模式：跳过地图/教学，直接进入第1关循环
+    if (this.mode === "endless") {
+      this.initGameData();
+      this.deck = this.createStarterDeck();
+      this.items = [];
+
+      // 无尽关卡从第1关开始
+      this.endlessStage = 1;
+      this.endlessWave = 1;
+      this.endlessPrevWaveElite = false;
+      this.endlessShopActive = false;
+      this.endlessShopRefreshTimes = 0;
+      this._endlessContext = null;
+
+      // 难度 1/2 允许选择 1 个初始道具
+      if (this.endlessDifficulty <= 2) {
+        this.openEndlessInitItemModal();
+      } else {
+        this.startEndlessWaveBattle();
+      }
+      return;
+    }
+
     if (this.isFirstBattle) {
       this.initGameData();
       this.deck = this.createStarterDeck();
@@ -2770,6 +3048,8 @@ class Game {
   }
 
   generateShopItems() {
+    // 无尽模式：商店只用于“购买道具/卡牌”
+    if (this.mode === "endless") return this.generateEndlessShopItems();
     const items = {
       cards: [],
       upgrades: [],
@@ -2861,6 +3141,82 @@ class Game {
     return items;
   }
 
+  // 无尽模式：只生成 2 道具 + 3 卡牌
+  generateEndlessShopItems() {
+    const items = {
+      cards: [],
+      upgrades: [],
+      shopItems: [],
+      sellCards: [],
+    };
+
+    // 卡牌池：只卖“已解锁职业”的牌
+    const cardPool = Object.keys(CARDS_DB).filter((id) => {
+      const card = CARDS_DB[id];
+      if (!card) return false;
+      if (card.profession === "common") return false;
+      if (!this.unlockedProfessions.includes(card.profession)) return false;
+      if (!this.isCardUnlocked(id)) return false;
+      return true;
+    });
+    const distinctCardCount = Math.min(3, cardPool.length);
+    const chosenCards = new Set();
+    while (items.cards.length < distinctCardCount && cardPool.length > 0) {
+      const cid = cardPool[Math.floor(Math.random() * cardPool.length)];
+      if (!cid || chosenCards.has(cid)) continue;
+      chosenCards.add(cid);
+      const c = CARDS_DB[cid];
+      items.cards.push({
+        id: cid,
+        name: c?.name || cid,
+        icon: c?.icon || "🃏",
+        cost: 50 + (c?.damage || 0) * 2 + (c?.heal || 0),
+        rarity: c?.profession || "rare",
+      });
+    }
+    // 若池子太小允许补重复到 3 张
+    while (items.cards.length < 3 && cardPool.length > 0) {
+      const cid = cardPool[Math.floor(Math.random() * cardPool.length)];
+      const c = CARDS_DB[cid];
+      if (!c) break;
+      items.cards.push({
+        id: cid,
+        name: c.name,
+        icon: c.icon,
+        cost: 50 + (c.damage || 0) * 2 + (c.heal || 0),
+        rarity: c.profession,
+      });
+    }
+
+    // 道具池：从已解锁道具里随机 2 个
+    let itemPool = this.getShopAndEventItemPool();
+    if (!Array.isArray(itemPool) || itemPool.length < 2) {
+      itemPool = Object.keys(typeof ITEMS_DB !== "undefined" ? ITEMS_DB : {}).filter((id) => this.isItemUnlocked(id));
+    }
+    const chosenItems = new Set();
+    while (items.shopItems.length < 2 && itemPool.length > 0) {
+      const id = itemPool[Math.floor(Math.random() * itemPool.length)];
+      if (!id || chosenItems.has(id)) continue;
+      chosenItems.add(id);
+      const it = ITEMS_DB[id];
+      if (!it) continue;
+      const rarity = it.rarity || "common";
+      let minPrice = 80;
+      let maxPrice = 120;
+      if (rarity === "rare") {
+        minPrice = 120; maxPrice = 180;
+      } else if (rarity === "epic") {
+        minPrice = 250; maxPrice = 350;
+      } else if (rarity === "legendary") {
+        minPrice = 450; maxPrice = 600;
+      }
+      const cost = minPrice + Math.floor(Math.random() * (maxPrice - minPrice + 1));
+      items.shopItems.push({ id, name: it.name, icon: it.icon, cost, rarity });
+    }
+
+    return items;
+  }
+
   bindShopItemTooltip(el, name, desc, effect) {
     const tooltip = document.getElementById("shop-tooltip");
     if (!tooltip) return;
@@ -2890,6 +3246,30 @@ class Game {
   refreshShopUI() {
     // 更新金币显示
     document.getElementById("shop-gold-display").textContent = this.gold || 0;
+
+    // 无尽模式：隐藏“升级/出售”，只保留购买卡牌 + 道具
+    try {
+      const leaveBtn = document.getElementById("shop-leave");
+      if (leaveBtn) leaveBtn.textContent = this.mode === "endless" ? "完成" : "离开";
+
+      const upgradeEl = document.getElementById("shop-upgrade");
+      const sellEl = document.getElementById("shop-sell");
+      const upgradeSection = upgradeEl?.closest?.(".shop-section");
+      const sellSection = sellEl?.closest?.(".shop-section");
+      if (upgradeSection) upgradeSection.style.display = this.mode === "endless" ? "none" : "";
+      if (sellSection) sellSection.style.display = this.mode === "endless" ? "none" : "";
+
+      if (this.mode === "endless") {
+        const refreshBtn = document.getElementById("shop-refresh");
+        if (refreshBtn) {
+          const base = 15;
+          const growth = 1.5;
+          const times = this.endlessShopRefreshTimes || 0;
+          const cost = Math.floor(base * Math.pow(growth, times));
+          refreshBtn.textContent = `刷新 (${cost}金)`;
+        }
+      }
+    } catch (_) {}
     
     // 卡牌购买区
     const cardsEl = document.getElementById("shop-cards");
@@ -3161,19 +3541,52 @@ class Game {
   }
 
   refreshShop() {
+    // 无尽模式：刷新花费按指数上升
+    if (this.mode === "endless") {
+      const base = 15;
+      const growth = 1.5;
+      const times = this.endlessShopRefreshTimes || 0;
+      const cost = Math.floor(base * Math.pow(growth, times));
+      if ((this.gold || 0) < cost) {
+        this.log("金币不足！", "system");
+        return;
+      }
+      this.gold = (this.gold || 0) - cost;
+      this.endlessShopRefreshTimes = times + 1;
+      this.shopItems = this.generateShopItems();
+      this.refreshShopUI();
+      if (window.audioManager) window.audioManager.gold();
+      return;
+    }
+
+    // 普通模式：固定刷新价（旧逻辑）
     if ((this.gold || 0) < 30) {
       this.log("金币不足！", "system");
       return;
     }
-    
+
     this.gold -= 30;
     this.shopItems = this.generateShopItems();
     this.refreshShopUI();
-    
+
     if (window.audioManager) window.audioManager.gold();
   }
 
   leaveShop() {
+    // 无尽模式：点击“完成”直接进入下一关战斗
+    if (this.mode === "endless" && this.endlessShopActive) {
+      document.getElementById("shop-view")?.classList.add("hidden");
+      this.endlessShopActive = false;
+
+      this.endlessStage = (this.endlessStage || 1) + 1;
+      this.endlessWave = 1;
+      this.endlessPrevWaveElite = false; // wave1 永远普通
+      this._endlessContext = null;
+
+      this.startEndlessWaveBattle();
+      return;
+    }
+
     document.getElementById("shop-view").classList.add("hidden");
     this.showMapView();
   }
@@ -3395,6 +3808,124 @@ class Game {
     this.syncBattleTopChrome();
   }
 
+  // ===== 道具图鉴（显示所有道具；未解锁用“？”占位）=====
+  renderItemDex() {
+    const grid = document.getElementById("item-dex-grid");
+    if (!grid || typeof ITEMS_DB === "undefined") return;
+    grid.innerHTML = "";
+
+    const ids = Object.keys(ITEMS_DB);
+    // 解锁优先，其次按稀有度（legendary > epic > rare > common）
+    const rarityRank = { legendary: 0, epic: 1, rare: 2, common: 3 };
+    ids.sort((a, b) => {
+      // 图鉴语义：只有“已解锁获得过/已记录”的道具才显示真实信息
+      const ua = Array.isArray(this.unlockedItems) ? this.unlockedItems.includes(a) : (this.isItemUnlocked ? this.isItemUnlocked(a) : true);
+      const ub = Array.isArray(this.unlockedItems) ? this.unlockedItems.includes(b) : (this.isItemUnlocked ? this.isItemUnlocked(b) : true);
+      if (ua !== ub) return ua ? -1 : 1;
+      const ia = ITEMS_DB[a] || {};
+      const ib = ITEMS_DB[b] || {};
+      const ra = rarityRank[ia.rarity] ?? 9;
+      const rb = rarityRank[ib.rarity] ?? 9;
+      return ra - rb || (ia.name || a).localeCompare(ib.name || b, "zh-Hans");
+    });
+
+    ids.forEach((id) => {
+      const item = ITEMS_DB[id];
+      if (!item) return;
+      const unlocked = Array.isArray(this.unlockedItems)
+        ? this.unlockedItems.includes(id)
+        : (this.isItemUnlocked ? this.isItemUnlocked(id) : true);
+
+      const tile = document.createElement("div");
+      tile.className = `item-dex-tile${unlocked ? "" : " locked"}`;
+      tile.dataset.itemId = id;
+
+      const rarityColor =
+        (typeof RARITY_COLORS !== "undefined" && RARITY_COLORS[item.rarity]) ||
+        (item.rarity === "legendary"
+          ? "#ff8000"
+          : item.rarity === "epic"
+            ? "#a335ee"
+            : item.rarity === "rare"
+              ? "#4a90d9"
+              : "#888");
+
+      if (unlocked) {
+        tile.innerHTML = `
+          <div class="item-dex-icon" style="border-color:${rarityColor};">${item.icon}</div>
+          <div class="item-dex-name">${item.name}</div>
+          <div class="item-dex-desc">${item.description || ""}</div>
+        `;
+        tile.title = `${item.name}\n${item.description || ""}\n${
+          item.detail ? item.detail.replace(/\n/g, " ") : ""
+        }`.trim();
+      } else {
+        tile.innerHTML = `
+          <div class="item-dex-icon locked" style="border-color:rgba(255,255,255,0.25);">？</div>
+          <div class="item-dex-name locked"></div>
+          <div class="item-dex-desc locked"></div>
+        `;
+        tile.title = "未解锁";
+      }
+
+      grid.appendChild(tile);
+    });
+  }
+
+  showItemDexView() {
+    const dexView = document.getElementById("items-dex-view");
+    if (!dexView) return;
+    this.renderItemDex();
+
+    // 作为子视图浮层：隐藏其他主视图（不改 this.view）
+    const teamBuildView = document.getElementById("team-build-view");
+    const mapView = document.getElementById("map-view");
+    const battleView = document.getElementById("battle-view");
+    const shopView = document.getElementById("shop-view");
+    const eventView = document.getElementById("event-view");
+    const combosView = document.getElementById("combos-view");
+    const rewardView = document.getElementById("reward-view");
+    const deckView = document.getElementById("deck-view");
+
+    if (teamBuildView) teamBuildView.classList.add("hidden");
+    if (mapView) mapView.classList.add("hidden");
+    if (battleView) battleView.classList.add("hidden");
+    if (shopView) shopView.classList.add("hidden");
+    if (eventView) eventView.classList.add("hidden");
+    if (combosView) combosView.classList.add("hidden");
+    if (rewardView) rewardView.classList.add("hidden");
+    if (deckView) deckView.classList.add("hidden");
+
+    dexView.classList.remove("hidden");
+    this.syncBattleTopChrome();
+  }
+
+  hideItemDexView() {
+    document.getElementById("items-dex-view")?.classList.add("hidden");
+
+    // 从初始菜单进入：关闭回到初始菜单
+    if (this._returnToStartScreenAfterDex) {
+      this._returnToStartScreenAfterDex = false;
+      document.getElementById("game-container")?.classList.add("hidden");
+      document.getElementById("start-screen")?.classList.remove("hidden");
+      return;
+    }
+
+    // 恢复到进入图鉴前的基础视图（由 this.view 决定）
+    if (this.view === "map") {
+      document.getElementById("map-view")?.classList.remove("hidden");
+    } else if (this.view === "battle") {
+      document.getElementById("battle-view")?.classList.remove("hidden");
+    } else if (this.view === "shop") {
+      document.getElementById("shop-view")?.classList.remove("hidden");
+    } else if (this.view === "event") {
+      document.getElementById("event-view")?.classList.remove("hidden");
+    } else {
+      document.getElementById("map-view")?.classList.remove("hidden");
+    }
+    this.syncBattleTopChrome();
+  }
+
   updateGoldDisplay() {
     const goldEl = document.getElementById("gold-display");
     if (goldEl) goldEl.textContent = this.gold || 0;
@@ -3406,16 +3937,29 @@ class Game {
     const floorEl = document.getElementById("floor-display");
     const floorNameEl = document.getElementById("floor-name");
     const floorNumberEl = document.getElementById("floor-number");
-    
-    if (floorEl) floorEl.textContent = `第 ${this.map.floor} 层`;
+
+    // 无尽模式：显示“无尽模式/第X关”，避免误导“第X层/共Y层”
+    if (this.mode === "endless") {
+      const stage = this.endlessStage || this.map.floor || 1;
+      if (floorEl) floorEl.textContent = `无尽 第 ${stage} 关`;
+      if (floorNameEl) floorNameEl.textContent = "无尽模式";
+      if (floorNumberEl) floorNumberEl.textContent = `第 ${stage} 关`;
+    } else {
+      if (floorEl) floorEl.textContent = `第 ${this.map.floor} 层`;
+    }
     
     // 使用新的楼层配置
-    const floorConfig = window.getCurrentFloor ? window.getCurrentFloor(this.map.floor) : null;
-    if (floorNameEl) {
-      floorNameEl.textContent = floorConfig ? floorConfig.name : "未知区域";
-    }
-    if (floorNumberEl) {
-      floorNumberEl.textContent = `第 ${this.map.floor} 层 / 共 ${this.map.maxFloor} 层`;
+    const floorConfig =
+      this.mode === "endless"
+        ? null
+        : (window.getCurrentFloor ? window.getCurrentFloor(this.map.floor) : null);
+    if (this.mode !== "endless") {
+      if (floorNameEl) {
+        floorNameEl.textContent = floorConfig ? floorConfig.name : "未知区域";
+      }
+      if (floorNumberEl) {
+        floorNumberEl.textContent = `第 ${this.map.floor} 层 / 共 ${this.map.maxFloor} 层`;
+      }
     }
     
     // 应用楼层主题
@@ -3425,7 +3969,12 @@ class Game {
 
     const battleFloorEl = document.getElementById("battle-floor-display");
     if (battleFloorEl) {
-      battleFloorEl.textContent = `第 ${this.map.floor} 层`;
+      if (this.mode === "endless") {
+        const stage = this.endlessStage || this.map.floor || 1;
+        battleFloorEl.textContent = `无尽 第 ${stage} 关`;
+      } else {
+        battleFloorEl.textContent = `第 ${this.map.floor} 层`;
+      }
     }
   }
 
@@ -3454,8 +4003,11 @@ class Game {
     }
     
     // 根据层数增强敌人（逐层更明显地变难）
-    const floorHpMult = 1 + (this.map.floor - 1) * 0.45;
-    const floorAtkMult = 1 + (this.map.floor - 1) * 0.30;
+    // 无尽模式下敌人本身已按 stage 生成并缩放，这里不再叠加 map.floor 倍率，避免“双重缩放”导致秒杀过快
+    const floorHpMult =
+      this.mode === "endless" ? 1 : 1 + (this.map.floor - 1) * 0.45;
+    const floorAtkMult =
+      this.mode === "endless" ? 1 : 1 + (this.map.floor - 1) * 0.30;
     enemyData.hp = Math.floor(enemyData.hp * floorHpMult);
     enemyData.atk = Math.floor(enemyData.atk * floorAtkMult);
     
@@ -3469,6 +4021,11 @@ class Game {
       gold: enemyData.gold || 20,
       aiType: enemyData.aiType || (isBoss ? "boss1" : "basic"),
       armor: enemyData.armor || 0,
+      // 无尽模式需要的扩展字段（用于 boss_multi / 精英连发概率）
+      isElite: !!enemyData.isElite,
+      bossSkills: Array.isArray(enemyData.bossSkills) ? enemyData.bossSkills : null,
+      endlessStage: enemyData.endlessStage || null,
+      endlessDifficulty: enemyData.endlessDifficulty || null,
       intentText: "",
       stunned: 0,
       slow: 0,
@@ -3685,6 +4242,10 @@ class Game {
 
   // 战斗结果回调（由 battle.js 调用）
   onBattleResult(win) {
+    // 无尽模式：自定义胜负后的波次/商店循环
+    if (this.mode === "endless") {
+      return this.onEndlessBattleResult(win);
+    }
     try {
       this._eventRunDamageBuff = 1;
       this._eventBuffTipShown = false;
@@ -3956,6 +4517,16 @@ class Game {
     if (this.rewardPending && !this.rewardPending.cardDone && this.rewardPending.cardId) this.rewardSkipCard();
     if (this.rewardPending && !this.rewardPending.itemDone && this.rewardPending.itemId) this.rewardSkipItem();
     document.getElementById("reward-view").classList.add("hidden");
+
+    // 无尽模式：Boss 结束后进入商店（而不是回地图）
+    if (this.mode === "endless" && this._endlessContext && this._endlessContext.stageEnd) {
+      this._endlessContext.stageEnd = false;
+      this.endlessShopActive = true;
+      this.endlessShopRefreshTimes = 0;
+      this.showShop();
+      return;
+    }
+
     if (this.justFinishedFirstBattle) {
       this.justFinishedFirstBattle = false;
       this.log("欢迎来到城市！选择你的路线开始冒险", "system");
@@ -4527,12 +5098,12 @@ class Game {
     }
   }
 
-  // 更新左侧栏出牌区计数
+  // 更新出牌区左上角计数（当前张数/上限）
   updatePlayedCount() {
     const el = document.getElementById("battle-played-count");
     if (!el || !this.battle) return;
     const limit = this.getPlayedLimit ? this.getPlayedLimit() : 5;
-    el.textContent = `${this.battle.playedCards.length} / ${limit}`;
+    el.textContent = `${this.battle.playedCards.length}/${limit}`;
   }
 
   // 渲染出牌区（本回合打出的牌，点击收回手牌）
@@ -5365,6 +5936,10 @@ class Game {
     const shopLeave = document.getElementById("shop-leave");
     if (shopLeave) {
       shopLeave.addEventListener("click", () => this.leaveShop());
+    }
+    const itemsDexCloseBtn = document.getElementById("items-dex-close");
+    if (itemsDexCloseBtn) {
+      itemsDexCloseBtn.addEventListener("click", () => this.hideItemDexView());
     }
 
     // 事件确认按钮

@@ -363,7 +363,21 @@ class BattleSystem {
           if (typeof this.game.addShield === "function") {
             const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
             const shieldMult = 1 + (level - 1) * 0.5;
-            this.game.addShield("warrior", Math.floor((card.shield || 0) * shieldMult), card.name);
+            const amount = Math.floor((card.shield || 0) * shieldMult);
+
+            // 护盾卡不再只绑定“warrior”，否则非战士队伍会出现“出了护盾牌但看不到护盾”的问题。
+            // 规则：若该牌也是全队治疗（healAll），则护盾给全队；否则给该牌对应职业（若是 common，则给全队）。
+            const selected = Array.isArray(this.game.selectedProfessions) ? this.game.selectedProfessions : [];
+            let targets = [];
+            if (card.healAll) {
+              targets = selected;
+            } else if (card.profession && card.profession !== "common") {
+              targets = [card.profession];
+            } else {
+              targets = selected;
+            }
+            const uniqueTargets = [...new Set(targets.filter((p) => this.game.isProfessionActive && this.game.isProfessionActive(p)))];
+            uniqueTargets.forEach((p) => this.game.addShield(p, amount, card.name));
           }
         }
 
@@ -557,7 +571,9 @@ class BattleSystem {
       if (this.enemy && this.enemy.aiType === "elite1_shatter") {
         if (typeof this.enemy.eliteShatterCD !== "number") this.enemy.eliteShatterCD = 0;
         if (shatterActive) {
-          this.enemy.eliteShatterCD = 1;
+          // 无尽模式：层数越高，精英技能触发越频繁（更短冷却）
+          const stage = this.enemy.endlessStage || 1;
+          this.enemy.eliteShatterCD = stage >= 8 ? 0 : 1;
         }
       }
 
@@ -1040,7 +1056,13 @@ class BattleSystem {
         if ((this.enemy.weakness || 0) > 0) this.enemy.weakness--;
         if ((this.enemy.blind || 0) > 0) this.enemy.blind--;
         // 被眩晕时：不触发本回合的随机机制技能（持续型效果已在别处结算）
-        if (this.enemy && this.enemy.aiType === "boss1") this.enemy.boss1Skill = null;
+        // boss_multi 也可能包含 boss1 的机制，因此这里要一并清掉。
+        if (this.enemy) {
+          const includesBoss1 =
+            this.enemy.aiType === "boss1" ||
+            (this.enemy.aiType === "boss_multi" && Array.isArray(this.enemy.bossSkills) && this.enemy.bossSkills.includes("boss1"));
+          if (includesBoss1) this.enemy.boss1Skill = null;
+        }
         this.game.log(`✨ ${this.enemy.name} 被眩晕，本回合无法行动`, "system");
         if (typeof this.game.updateEnemyDebuffsAndIntent === "function") {
           this.game.updateEnemyDebuffsAndIntent();
@@ -1049,7 +1071,7 @@ class BattleSystem {
         return;
       }
 
-      const ai = this.enemy.aiType || "basic";
+      let ai = this.enemy.aiType || "basic";
       const baseAtk = this.enemy.atk || 10;
       const applyDebuffMult = (dmg) => {
         let damage = dmg;
@@ -1174,6 +1196,18 @@ class BattleSystem {
           await wait(900);
         }
       };
+
+      // boss_multi：根据关数决定是否触发其中某个 Boss 技能
+      if (ai === "boss_multi") {
+        const stage = this.enemy.endlessStage || (this.game && this.game.endlessStage) || 1;
+        const skills = Array.isArray(this.enemy.bossSkills) ? this.enemy.bossSkills : [];
+        const triggerChance = Math.min(0.95, 0.35 + (stage - 1) * 0.04); // stage 越高，触发频率越高
+        if (skills.length > 0 && Math.random() < triggerChance) {
+          ai = skills[Math.floor(Math.random() * skills.length)];
+        } else {
+          ai = "basic";
+        }
+      }
 
       if (ai === "boss1") {
         // Boss1：机制技能不再“每回合必放”，改为【预告 → 下回合执行】并带冷却
@@ -1312,15 +1346,24 @@ class BattleSystem {
         }
       } else {
         // 普通怪：逐回合稍微变强，且偶尔双击
-        const ramp = 1 + Math.min(0.25, (actIndex - 1) * 0.03);
+        const isElite = !!(this.enemy && this.enemy.isElite);
+        const rampCap = isElite ? 0.18 : 0.25;
+        const ramp = 1 + Math.min(rampCap, (actIndex - 1) * 0.03);
         const roll = Math.random();
-        if (roll < 0.18) {
-          await enemyAttack(Math.floor(baseAtk * 0.7 * ramp));
-          await enemyAttack(Math.floor(baseAtk * 0.7 * ramp));
-          this.enemy.intentText = `⚔️ 下回合：连击 (${applyDebuffMult(Math.floor(baseAtk * 0.7 * ramp))}×2)`;
-        } else if (roll < 0.28) {
-          await enemyAttack(Math.floor(baseAtk * 0.65 * ramp), { aoe: true });
-          this.enemy.intentText = `💥 下回合：群攻 (${applyDebuffMult(Math.floor(baseAtk * 0.65 * ramp))} 伤害)`;
+
+        // 精英怪：降低双击/群攻的触发率与倍率，避免出现“单回合秒杀”
+        const doubleChance = isElite ? 0.12 : 0.18;
+        const aoeChance = isElite ? 0.20 : 0.28;
+        const doubleMult = isElite ? 0.6 : 0.7;
+        const aoeMult = isElite ? 0.55 : 0.65;
+
+        if (roll < doubleChance) {
+          await enemyAttack(Math.floor(baseAtk * doubleMult * ramp));
+          await enemyAttack(Math.floor(baseAtk * doubleMult * ramp));
+          this.enemy.intentText = `⚔️ 下回合：连击 (${applyDebuffMult(Math.floor(baseAtk * doubleMult * ramp))}×2)`;
+        } else if (roll < aoeChance) {
+          await enemyAttack(Math.floor(baseAtk * aoeMult * ramp), { aoe: true });
+          this.enemy.intentText = `💥 下回合：群攻 (${applyDebuffMult(Math.floor(baseAtk * aoeMult * ramp))} 伤害)`;
         } else {
           await enemyAttack(Math.floor(baseAtk * ramp));
           this.enemy.intentText = `⚔️ 下回合：攻击 (${applyDebuffMult(Math.floor(baseAtk * ramp))} 伤害)`;
