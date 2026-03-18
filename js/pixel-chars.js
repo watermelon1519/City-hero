@@ -451,22 +451,21 @@ class PixelCharRenderer {
     this.cache = new Map();
   }
 
-  // 渲染角色到 canvas
-  render(charId, frame = 'idle', scale = 2) {
-    const char = PIXEL_CHARS[charId] || PIXEL_ENEMIES[charId];
-    if (!char) return null;
+  _frameGridList(char, state) {
+    const f = char.frames[state];
+    if (!f) return [];
+    if (Array.isArray(f)) return f.filter((s) => typeof s === "string" && s.length);
+    return typeof f === "string" ? [f] : [];
+  }
 
-    const frameData = char.frames[frame] || char.frames.idle;
-    if (!frameData) return null;
-
+  _drawGrid(char, frameData, scale) {
+    if (!frameData || typeof frameData !== "string") return null;
     const size = 32;
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = size * scale;
     canvas.height = size * scale;
-    const ctx = canvas.getContext('2d');
-
+    const ctx = canvas.getContext("2d");
     const colors = char.colors;
-    
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const idx = parseInt(frameData[y * size + x], 10);
@@ -476,8 +475,19 @@ class PixelCharRenderer {
         }
       }
     }
-
     return canvas;
+  }
+
+  // 渲染角色到 canvas
+  render(charId, frame = 'idle', scale = 2) {
+    const char = PIXEL_CHARS[charId] || PIXEL_ENEMIES[charId];
+    if (!char) return null;
+
+    let frameData = char.frames[frame] || char.frames.idle;
+    if (Array.isArray(frameData)) frameData = frameData[0];
+    if (!frameData) return null;
+
+    return this._drawGrid(char, frameData, scale);
   }
 
   // 创建动画精灵
@@ -533,6 +543,91 @@ class PixelCharRenderer {
     }
 
     return container;
+  }
+
+  /**
+   * 状态精灵：idle 循环；playAttack(ms) 短时 attack 后回 idle；destroy 清理定时器
+   */
+  createStateSprite(charId, scale = 2, idleFps = 3) {
+    const char = PIXEL_CHARS[charId] || PIXEL_ENEMIES[charId];
+    if (!char) return null;
+
+    let idleGrids = this._frameGridList(char, "idle");
+    if (!idleGrids.length) {
+      const keys = Object.keys(char.frames || {});
+      for (const k of keys) {
+        idleGrids = this._frameGridList(char, k);
+        if (idleGrids.length) break;
+      }
+    }
+    if (!idleGrids.length) return null;
+
+    const attackGrids = this._frameGridList(char, "attack");
+    const attackGrid = attackGrids[0] || idleGrids[0];
+
+    const el = document.createElement("div");
+    el.className = "pixel-sprite pixel-sprite-state";
+    el.style.width = `${32 * scale}px`;
+    el.style.height = `${32 * scale}px`;
+    el.style.imageRendering = "pixelated";
+    el.style.position = "relative";
+
+    let idleTimer = null;
+    let attackTimeout = null;
+    let idleIdx = 0;
+
+    const showGrid = (grid) => {
+      const c = this._drawGrid(char, grid, scale);
+      if (!c) return;
+      el.innerHTML = "";
+      el.appendChild(c);
+    };
+
+    const clearIdle = () => {
+      if (idleTimer != null) {
+        clearInterval(idleTimer);
+        idleTimer = null;
+      }
+    };
+
+    const startIdle = () => {
+      clearIdle();
+      if (idleGrids.length <= 1) {
+        showGrid(idleGrids[0]);
+        return;
+      }
+      idleIdx = 0;
+      showGrid(idleGrids[0]);
+      const ms = Math.max(80, Math.floor(1000 / Math.max(1, idleFps)));
+      idleTimer = setInterval(() => {
+        idleIdx = (idleIdx + 1) % idleGrids.length;
+        showGrid(idleGrids[idleIdx]);
+      }, ms);
+    };
+
+    startIdle();
+
+    return {
+      el,
+      setState() {},
+      playAttack(ms = 400) {
+        if (attackTimeout) clearTimeout(attackTimeout);
+        clearIdle();
+        showGrid(attackGrid);
+        attackTimeout = setTimeout(() => {
+          attackTimeout = null;
+          startIdle();
+        }, Math.max(120, ms));
+      },
+      destroy() {
+        clearIdle();
+        if (attackTimeout) {
+          clearTimeout(attackTimeout);
+          attackTimeout = null;
+        }
+        el.innerHTML = "";
+      },
+    };
   }
 }
 

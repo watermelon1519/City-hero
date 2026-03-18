@@ -584,6 +584,11 @@ class BattleSystem {
       this.enemy.hp -= dealt;
       this.damageThisTurn = dealt;
       try {
+        if (dealt > 0 && this.game && typeof this.game.notifyPlayerDamageToEnemy === "function") {
+          this.game.notifyPlayerDamageToEnemy(played);
+        }
+      } catch (_) {}
+      try {
         if (this.game && typeof this.game.recordDamage === "function") this.game.recordDamage(dealt);
       } catch (_) {}
 
@@ -657,6 +662,11 @@ class BattleSystem {
             const strike = Math.max(12, Math.floor(curHp * 0.25));
             this.enemy.hp -= strike;
             this.damageThisTurn += strike;
+            try {
+              if (strike > 0 && this.game && typeof this.game.flashEnemySpriteHit === "function") {
+                this.game.flashEnemySpriteHit();
+              }
+            } catch (_) {}
             if (this.game && typeof this.game.recordDamage === "function") this.game.recordDamage(this.damageThisTurn);
             this.game.log(`⚡ 雷霆之刃触发：雷击追加 ${strike} 伤害（敌人当前生命 25%，打满出牌上限 ${playedCount}/${limit}）`, "combo");
             try { this.game.showDamageNumber(strike, strike, 1.0); } catch (_) {}
@@ -995,6 +1005,11 @@ class BattleSystem {
         const fromHp = this.enemy.hp || 0;
         this.enemy.hp = Math.max(0, (this.enemy.hp || 0) - dmg);
         try {
+          if (dmg > 0 && this.game && typeof this.game.flashEnemySpriteHit === "function") {
+            this.game.flashEnemySpriteHit();
+          }
+        } catch (_) {}
+        try {
           if (this.game && this.game.effects && typeof this.game.effects.showDamageNumber === "function") {
             const enemyEl = document.getElementById("enemy-section");
             const rect = enemyEl ? enemyEl.getBoundingClientRect() : null;
@@ -1048,6 +1063,11 @@ class BattleSystem {
       const wait = (ms) => new Promise((r) => setTimeout(r, ms));
       const enemyAttack = async (damage, opts = {}) => {
         const dmg = applyDebuffMult(damage);
+        try {
+          if (dmg > 0 && this.game && typeof this.game.playEnemyAttackAnim === "function") {
+            this.game.playEnemyAttackAnim(480);
+          }
+        } catch (_) {}
         const damageType = opts.damageType || (opts.aoe ? "spell" : "direct");
         const damageOpts = { damageType, ...(opts.damageOpts || {}) };
         // 致盲：降低命中率（每层 -20%），最低保留 5% 命中

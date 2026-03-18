@@ -79,29 +79,42 @@
 
     <!-- 顶部状态栏 -->
     <div id="top-status-bar">
-      <div class="status-item">
-        <span class="status-icon">💰</span>
-        <span class="status-value" id="gold-display">0</span>
+      <div class="top-status-left">
+        <div class="status-item">
+          <span class="status-icon">💰</span>
+          <span class="status-value" id="gold-display">0</span>
+        </div>
       </div>
-      <div class="status-item">
-        <span class="status-icon">🏛️</span>
-        <span class="status-value" id="floor-display">第 1 层</span>
-      </div>
-      <div class="status-item clickable" id="combos-btn">
-        <span class="status-icon">🌟</span>
-        <span class="status-value">组合技</span>
-      </div>
-      <div class="status-item clickable" id="deck-btn">
-        <span class="status-icon">🃏</span>
-        <span class="status-value">牌库</span>
-      </div>
-      <div class="status-item clickable" id="save-btn" title="保存进度">
-        <span class="status-icon">💾</span>
-        <span class="status-value">存档</span>
-      </div>
-      <div class="status-item clickable" id="music-btn">
-        <span class="status-icon">🎵</span>
-        <span class="status-value">音乐</span>
+      <div class="top-status-right">
+        <!-- 仅战斗中显示：道具图标（放到右上角） -->
+        <div id="battle-top-items" class="battle-top-items hidden" aria-hidden="true">
+          <div id="item-section" class="hand-items-row battle-top-items-row">
+            <span class="section-label-inline">道具</span>
+            <div class="item-slots" id="item-slots"></div>
+            <div id="item-tooltip" class="item-tooltip hidden"></div>
+          </div>
+        </div>
+
+        <div class="status-item" id="top-floor-item">
+          <span class="status-icon">🏛️</span>
+          <span class="status-value" id="floor-display">第 1 层</span>
+        </div>
+        <div class="status-item clickable" id="combos-btn">
+          <span class="status-icon">🌟</span>
+          <span class="status-value">组合技</span>
+        </div>
+        <div class="status-item clickable" id="deck-btn">
+          <span class="status-icon">🃏</span>
+          <span class="status-value">牌库</span>
+        </div>
+        <div class="status-item clickable" id="save-btn" title="保存进度">
+          <span class="status-icon">💾</span>
+          <span class="status-value">存档</span>
+        </div>
+        <div class="status-item clickable" id="music-btn">
+          <span class="status-icon">🎵</span>
+          <span class="status-value">音乐</span>
+        </div>
       </div>
     </div>
 
@@ -201,10 +214,7 @@
             <button id="reward-item-skip" class="secondary-btn">丢弃</button>
           </div>
           <div id="reward-item-replace-slots" class="reward-actions hidden" style="margin-top: 8px;">
-            <button data-slot="0" class="secondary-btn">替换槽位1</button>
-            <button data-slot="1" class="secondary-btn">替换槽位2</button>
-            <button data-slot="2" class="secondary-btn">替换槽位3</button>
-            <button data-slot="3" class="secondary-btn">替换槽位4</button>
+            <!-- slots injected by game.js -->
           </div>
         </div>
         <div class="reward-actions" style="margin-top: 20px;">
@@ -268,8 +278,8 @@
       </div>
     </div>
 
-    <!-- 战斗视图 -->
-    <div id="battle-view" class="view">
+    <!-- 战斗视图（单页核心：日志/弃牌为抽屉） -->
+    <div id="battle-view" class="view battle-one-screen">
       <div id="battle-layout">
         <!-- 左侧：比赛信息 + 伤害框 -->
         <div id="battle-sidebar" class="pixel-panel">
@@ -298,13 +308,34 @@
             <span class="value" id="battle-played-count">0 / 5</span>
           </div>
           <div class="battle-sidebar-divider"></div>
+
+          <!-- 牌库 / 弃牌（数值类挨着排列） -->
+          <div id="pile-info" class="pile-info--sidebar">
+            <div class="pile-item">
+              <span class="label">牌库</span>
+              <span class="value" id="deck-count">0</span>
+            </div>
+            <div class="pile-item">
+              <span class="label">弃牌堆</span>
+              <span class="value clickable" id="discard-count">0</span>
+            </div>
+          </div>
+
+          <div class="battle-sidebar-divider"></div>
           <button id="battle-rules-btn" class="secondary-btn battle-rules-btn">牌型 / 伤害规则</button>
+
+          <div id="battle-bottom-bar" class="battle-bottom-bar battle-bottom-bar--sidebar">
+            <button type="button" id="btn-battle-log-drawer" class="secondary-btn battle-bar-btn">📜 战斗日志</button>
+            <button type="button" id="btn-battle-discard-drawer" class="secondary-btn battle-bar-btn">🃏 弃牌堆</button>
+          </div>
+
+          <button type="button" id="battle-settings-btn" class="secondary-btn battle-settings-btn" title="存档、音乐等">⚙️ 设置</button>
         </div>
 
-        <!-- 右侧：原有战斗区域 -->
-        <div id="battle-main">
+        <!-- 右侧：牌桌核心区 -->
+        <div id="battle-main" class="battle-arena">
           <!-- 顶部角色 VS 敌人 -->
-          <div id="battle-header">
+          <div id="battle-header" class="battle-header-felt">
             <!-- 我方队伍（动态生成） -->
             <div id="teammate-section"></div>
 
@@ -331,61 +362,53 @@
             </div>
           </div>
 
-          <!-- 出牌区（本回合打出的牌，最多5张，结束回合时结算） -->
-                  <div id="played-area-wrap" class="pixel-panel">
-                    <div class="section-label">本回合出牌（基础最多 5 张，道具可提高）</div>
-            <div id="item-section" class="hand-items-row">
-              <span class="section-label-inline">道具</span>
-              <div class="item-slots" id="item-slots"></div>
-              <div id="item-tooltip" class="item-tooltip hidden"></div>
+          <!-- 牌桌（出牌区在上、手牌在下）：视觉合并为一个面板，不改 id，避免影响流程/Boss 技能 -->
+          <div id="card-table" class="pixel-panel card-table">
+            <div id="played-area-wrap" class="card-table__played">
+              <div class="section-label">本回合出牌（基础最多 5 张，道具可提高）</div>
+              <div id="played-container" class="played-container"></div>
             </div>
-            <div id="played-container" class="played-container"></div>
-          </div>
-
-          <!-- 手牌区域 -->
-          <div id="hand-row">
-            <div id="hand-section" class="pixel-panel">
-              <div class="hand-label">手牌</div>
-              <div id="hand-poison-bar" class="hand-poison-bar hidden" role="status" aria-live="polite"></div>
-              <div id="hand-container"></div>
-            </div>
-          </div>
-
-          <!-- 牌库 / 弃牌信息 -->
-          <div id="pile-info">
-            <div class="pile-item">
-              <span class="label">牌库</span>
-              <span class="value" id="deck-count">0</span>
-            </div>
-            <div class="pile-item">
-              <span class="label">弃牌堆</span>
-              <span class="value clickable" id="discard-count">0</span>
+            <div id="hand-row" class="card-table__hand-row">
+              <div id="hand-section" class="card-table__hand">
+                <div class="hand-label">手牌</div>
+                <div id="hand-poison-bar" class="hand-poison-bar hidden" role="status" aria-live="polite"></div>
+                <div id="hand-container">
+                  <div id="hand-strip" class="hand-strip" aria-label="手牌"></div>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- 控制按钮 -->
-                  <div id="control-section">
-                    <button id="auto-fill-btn" class="secondary-btn" title="自动选出并打出当前伤害最高的一组牌（快捷键：Q 仅选牌）">自动出牌</button>
+          <div id="control-section">
+            <button id="auto-fill-btn" class="secondary-btn" title="自动选出并打出当前伤害最高的一组牌（快捷键：Q 仅选牌）">自动出牌</button>
             <button id="play-cards-btn" class="secondary-btn">出牌</button>
             <button id="reset-btn" class="secondary-btn">换牌</button>
             <button id="end-turn-btn" class="action-btn">结束回合</button>
           </div>
 
-          <!-- 底部：战斗日志 + 弃牌查看 -->
-          <div id="bottom-row">
-            <div id="log-section" class="pixel-panel">
-              <div class="section-label">战斗日志</div>
-              <div id="battle-log"></div>
-            </div>
-
-            <div id="discard-panel" class="pixel-panel">
-              <div class="section-label clickable" id="discard-toggle">查看弃牌堆 ▼</div>
-              <div id="discard-list" class="hidden"></div>
-            </div>
-          </div>
-
           <!-- 伤害动画层 -->
           <div id="damage-overlay" class="hidden"></div>
+        </div>
+      </div>
+
+      <div id="battle-drawer-backdrop" class="battle-drawer-backdrop hidden" aria-hidden="true"></div>
+      <div id="battle-drawer-log" class="battle-drawer battle-drawer--log" aria-hidden="true">
+        <div class="battle-drawer-header">
+          <span>战斗日志</span>
+          <button type="button" class="battle-drawer-close" id="battle-drawer-log-close" aria-label="关闭">×</button>
+        </div>
+        <div id="log-section" class="battle-drawer-body log-section-drawer">
+          <div id="battle-log" class="battle-log-scroll"></div>
+        </div>
+      </div>
+      <div id="battle-drawer-discard" class="battle-drawer battle-drawer--discard" aria-hidden="true">
+        <div class="battle-drawer-header">
+          <span>弃牌堆</span>
+          <button type="button" class="battle-drawer-close" id="battle-drawer-discard-close" aria-label="关闭">×</button>
+        </div>
+        <div class="battle-drawer-body">
+          <div id="discard-list" class="discard-list-drawer"></div>
         </div>
       </div>
     </div>
@@ -394,10 +417,27 @@
   <!-- 成就弹窗 -->
   <div id="achievement-overlay" class="achievement-overlay"></div>
 
+  <!-- 死亡结算画面 -->
+  <div id="death-overlay" class="death-overlay hidden" aria-hidden="true">
+    <div class="death-modal">
+      <div class="death-title">💀 全军覆没</div>
+      <div class="death-desc">旅程结束。你可以重新开始，或退出回到开始界面。</div>
+      <div class="death-actions">
+        <button type="button" id="death-restart" class="action-btn">重新开始</button>
+        <button type="button" id="death-exit" class="secondary-btn">退出游戏</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 设置弹窗 -->
   <div id="settings-modal" class="modal hidden">
     <div class="modal-content">
       <h2>⚙️ 设置</h2>
+      <div class="settings-item settings-quick-actions">
+        <button type="button" id="settings-save-game" class="secondary-btn">💾 保存进度</button>
+        <button type="button" id="settings-load-game" class="secondary-btn">📂 读取进度</button>
+        <button type="button" id="settings-music-toggle" class="secondary-btn">🎵 音乐开关</button>
+      </div>
       <div class="settings-item">
         <label>🎵 背景音乐</label>
         <input type="range" id="music-volume" min="0" max="100" value="30">
@@ -409,6 +449,13 @@
       <div class="settings-item">
         <label>🎨 像素风UI</label>
         <input type="checkbox" id="pixel-mode-toggle" checked>
+      </div>
+      <div class="settings-item">
+        <label>📘 教学关</label>
+        <label style="display:flex; align-items:center; gap:10px; justify-content:flex-end; width:auto;">
+          <input type="checkbox" id="tutorial-toggle">
+          <span style="font-size: 12px; color:#aaa;">开启（默认跳过）</span>
+        </label>
       </div>
       <div class="settings-item" style="flex-direction: column; align-items: stretch; gap: 10px;">
         <label style="width:100%;">🧪 测试工具（本地数据）</label>

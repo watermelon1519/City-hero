@@ -742,10 +742,42 @@ const CardUtil = {
     
     // 定位
     const rect = element.getBoundingClientRect();
-    tooltip.style.left = `${rect.right + 10}px`;
-    tooltip.style.top = `${rect.top}px`;
+    const pad = 10;
+    const vw = window.innerWidth || 0;
+    const vh = window.innerHeight || 0;
+    const prefLeft = rect.right + pad;
+    const prefTop = rect.top;
+    tooltip.style.left = `${prefLeft}px`;
+    tooltip.style.top = `${prefTop}px`;
     tooltip.style.display = "block";
     tooltip.classList.add("show");
+
+    // 视口内自适应（避免超出右侧/底部看不到；尽量“贴着卡牌”而不是飘到屏幕中间）
+    try {
+      const tt = tooltip.getBoundingClientRect();
+      let left = prefLeft;
+      let top = prefTop;
+
+      // 右侧放不下 → 放到卡牌左侧
+      if (left + tt.width + 8 > vw) {
+        left = Math.max(8, rect.left - tt.width - pad);
+      }
+      // 底部放不下 → 优先让 tooltip 的底边对齐卡牌底边（仍贴着卡牌）
+      if (top + tt.height + 8 > vh) {
+        top = rect.bottom - tt.height;
+      }
+      // 如果还是越界 → 再贴底
+      if (top + tt.height + 8 > vh) {
+        top = vh - tt.height - 8;
+      }
+      // 顶部也越界 → 贴顶
+      if (top < 8) top = 8;
+      // 左侧越界 → 贴左
+      if (left < 8) left = 8;
+
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+    } catch (_) {}
   },
 
   // 隐藏卡牌详情提示

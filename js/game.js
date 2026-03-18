@@ -3,7 +3,7 @@ class Game {
   constructor() {
     this.battle = new BattleSystem(this);
     this.items = []; // 初始道具为空
-    this.itemSlotCapacity = 4; // 道具栏容量（可永久扩展）
+    this.itemSlotCapacity = 10; // 道具栏容量（暂定上限 10）
     this.gold = 100; // 初始金币
     this.difficulty = 1;
     this.maxDifficultyUnlocked = 1;
@@ -69,7 +69,28 @@ class Game {
     // 进度型成就：启动时也尝试补判一次
     this.checkCriteriaAchievements();
 
+    // 设置：是否启用教学关（默认关闭=跳过教学）
+    this.tutorialEnabled = this.loadTutorialEnabled();
+
     this.init();
+  }
+
+  loadTutorialEnabled() {
+    try {
+      const k = "cityHeroTutorialEnabled";
+      const v = localStorage.getItem(k);
+      if (v == null) return false;
+      return v === "1" || v === "true";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  setTutorialEnabled(enabled) {
+    this.tutorialEnabled = !!enabled;
+    try {
+      localStorage.setItem("cityHeroTutorialEnabled", this.tutorialEnabled ? "1" : "0");
+    } catch (_) {}
   }
 
   // 基础出牌上限（可被道具提高）
@@ -78,7 +99,7 @@ class Game {
   }
 
   getItemSlotCapacity() {
-    return Math.max(1, Math.floor(this.itemSlotCapacity || 4));
+    return Math.min(10, Math.max(1, Math.floor(this.itemSlotCapacity || 10)));
   }
 
   increaseItemSlotCapacity(delta = 1) {
@@ -1135,6 +1156,7 @@ class Game {
     document.getElementById("shop-view")?.classList.add("hidden");
     document.getElementById("event-view")?.classList.add("hidden");
     view.classList.remove("hidden");
+    this.syncBattleTopChrome();
   }
 
   showProfessionUnlockModal(prof) {
@@ -1262,11 +1284,36 @@ class Game {
     if (this.isFirstBattle) {
       this.initGameData();
       this.deck = this.createStarterDeck();
-      this.startFirstBattle();
+      if (this.tutorialEnabled) {
+        this.startFirstBattle();
+      } else {
+        this.startRunSkipTutorial();
+      }
     } else {
       // 大关后重新组队：回到地图继续冒险，禁止再进「假人教学战」（否则会误判为 Boss 通关）
       this.resumeAdventureAfterTeamBuild(prevProfs);
     }
+  }
+
+  /** 新开一局但跳过教学战：直接生成第1层地图并进入地图视图 */
+  startRunSkipTutorial() {
+    this.isFirstBattle = false;
+    this.tutorialBattleActive = false;
+    this.justFinishedFirstBattle = false;
+    this.pendingTeamBuildAfterBoss = false;
+    try {
+      this.map.floor = 1;
+      this.map.generate();
+      this.currentNode = this.map.getNode(this.map.currentNodeId);
+    } catch (_) {}
+    try {
+      this.updateFloorDisplay();
+      this.updateGoldDisplay();
+      this.renderItems();
+      this.updateTeammateUI();
+      (this.selectedProfessions || []).forEach((p) => this.updateTeammateStatus(p));
+    } catch (_) {}
+    this.showMapView();
   }
 
   /** 中途换队：保留进度，补齐新队员与卡组，回地图 */
@@ -1331,7 +1378,7 @@ class Game {
 
         this.gold = data.gold || 100;
         this.items = data.items || [];
-        this.itemSlotCapacity = data.itemSlotCapacity || this.itemSlotCapacity || 4;
+        this.itemSlotCapacity = Math.min(10, Math.max(1, data.itemSlotCapacity || this.itemSlotCapacity || 10));
         this.deck = data.deck || this.createStarterDeck();
         this.discoveredCombos = data.discoveredCombos || [];
         this.map.floor = data.floor || 1;
@@ -1753,8 +1800,52 @@ class Game {
   showSettingsModal() {
     const modal = document.getElementById('settings-modal');
     if (!modal) return;
+
+    const syncMusicLabels = () => {
+      const on = window.audioManager && window.audioManager.bgMusicEnabled;
+      const st = document.getElementById("settings-music-toggle");
+      if (st) st.textContent = on ? "🎵 音乐：开" : "🔇 音乐：关";
+      const top = document.getElementById("music-btn");
+      const sv = top && top.querySelector(".status-value");
+      if (sv) sv.textContent = on ? "音乐" : "静音";
+    };
     
     modal.classList.remove('hidden');
+    syncMusicLabels();
+
+    // 教学开关（默认跳过）
+    try {
+      const tut = document.getElementById("tutorial-toggle");
+      if (tut) {
+        tut.checked = !!this.tutorialEnabled;
+        if (!tut.dataset.bound) {
+          tut.dataset.bound = "1";
+          tut.addEventListener("change", () => {
+            this.setTutorialEnabled(!!tut.checked);
+          });
+        }
+      }
+    } catch (_) {}
+
+    if (!this._settingsQuickActionsBound) {
+      this._settingsQuickActionsBound = true;
+      document.getElementById("settings-save-game")?.addEventListener("click", () => {
+        try {
+          modal.classList.add("hidden");
+        } catch (_) {}
+        this.openSaveModal("save");
+      });
+      document.getElementById("settings-load-game")?.addEventListener("click", () => {
+        try {
+          modal.classList.add("hidden");
+        } catch (_) {}
+        this.openSaveModal("load");
+      });
+      document.getElementById("settings-music-toggle")?.addEventListener("click", () => {
+        if (window.audioManager) window.audioManager.toggleBgMusic();
+        syncMusicLabels();
+      });
+    }
     
     // 音乐音量
     const musicVol = document.getElementById('music-volume');
@@ -2030,6 +2121,13 @@ class Game {
       combosBtn.addEventListener('click', () => this.showCombosView());
     }
 
+    // 死亡结算画面按钮
+    if (!this._deathOverlayBound) {
+      this._deathOverlayBound = true;
+      document.getElementById("death-restart")?.addEventListener("click", () => this.restartAfterDeath());
+      document.getElementById("death-exit")?.addEventListener("click", () => this.exitAfterDeath());
+    }
+
     // 战斗内「牌型 / 伤害规则」按钮（效果等同于组合技说明，但战斗时更顺手）
     const battleRulesBtn = document.getElementById("battle-rules-btn");
     if (battleRulesBtn) {
@@ -2061,6 +2159,36 @@ class Game {
         document.addEventListener("scroll", hide, true);
       }
     } catch (_) {}
+  }
+
+  showDeathOverlay() {
+    const ov = document.getElementById("death-overlay");
+    if (!ov) return;
+    ov.classList.remove("hidden");
+    ov.setAttribute("aria-hidden", "false");
+  }
+
+  hideDeathOverlay() {
+    const ov = document.getElementById("death-overlay");
+    if (!ov) return;
+    ov.classList.add("hidden");
+    ov.setAttribute("aria-hidden", "true");
+  }
+
+  restartAfterDeath() {
+    this.hideDeathOverlay();
+    // 直接开新一局（沿用当前难度；没设置则默认 1）
+    this.gameEnded = false;
+    this.battleUIEnabled = true;
+    try { this.closeBattleDrawers(); } catch (_) {}
+    try { document.getElementById("hand-container")?.classList.remove("game-ended"); } catch (_) {}
+    this.startNewGame(this.difficulty || 1);
+  }
+
+  exitAfterDeath() {
+    // 退出回到开始界面：用 reload 兜底清干净所有运行态
+    try { this.hideDeathOverlay(); } catch (_) {}
+    try { location.reload(); } catch (_) {}
   }
   
   // 初始化游戏数据（开始游戏时调用）
@@ -2106,7 +2234,16 @@ class Game {
   updateTeammateUI() {
     const section = document.getElementById("teammate-section");
     if (!section) return;
-    
+
+    if (this._allyStateSprites) {
+      Object.values(this._allyStateSprites).forEach((c) => {
+        try {
+          if (c && typeof c.destroy === "function") c.destroy();
+        } catch (_) {}
+      });
+    }
+    this._allyStateSprites = {};
+
     const professionInfo = {
       coder: { icon: "💻", name: "程序员", pixel: "coder" },
       dog: { icon: "🐕", name: "狗", pixel: "dog" },
@@ -2133,10 +2270,14 @@ class Game {
       
       // 尝试渲染像素角色
       if (window.pixelRenderer && window.PIXEL_CHARS && window.PIXEL_CHARS[info.pixel]) {
-        const sprite = window.pixelRenderer.createAnimatedSprite(info.pixel, 1.15, 3);
-        if (sprite) {
-          iconContainer.innerHTML = '';
-          iconContainer.appendChild(sprite);
+        const ctrl =
+          typeof window.pixelRenderer.createStateSprite === "function"
+            ? window.pixelRenderer.createStateSprite(info.pixel, 1.15, 3)
+            : null;
+        if (ctrl && ctrl.el) {
+          iconContainer.innerHTML = "";
+          iconContainer.appendChild(ctrl.el);
+          this._allyStateSprites[prof] = ctrl;
         } else {
           iconContainer.textContent = info.icon;
         }
@@ -2251,6 +2392,21 @@ class Game {
   }
 
   // ===== 视图切换 =====
+  /** 战斗时：顶栏显示道具槽、隐藏存档/音乐；非战斗时相反 */
+  syncBattleTopChrome() {
+    try {
+      const battle = document.getElementById("battle-view");
+      const gc = document.getElementById("game-container");
+      const items = document.getElementById("battle-top-items");
+      const inBattle = !!(battle && !battle.classList.contains("hidden"));
+      gc?.classList.toggle("in-battle", inBattle);
+      if (items) {
+        items.classList.toggle("hidden", !inBattle);
+        items.setAttribute("aria-hidden", inBattle ? "false" : "true");
+      }
+    } catch (_) {}
+  }
+
   showMapView() {
     this.view = "map";
     
@@ -2284,6 +2440,7 @@ class Game {
     } catch (e) {
       console.warn('Map music error:', e);
     }
+    this.syncBattleTopChrome();
   }
 
   showBattleView() {
@@ -2309,6 +2466,7 @@ class Game {
     try {
       this.syncMobileBattleHeader();
     } catch (_) {}
+    this.syncBattleTopChrome();
   }
 
   syncMobileBattleHeader() {
@@ -2535,6 +2693,7 @@ class Game {
     } catch (e) {
       console.warn('Event music error:', e);
     }
+    this.syncBattleTopChrome();
   }
 
   confirmEvent() {
@@ -2607,6 +2766,7 @@ class Game {
     } catch (e) {
       console.warn('Shop music error:', e);
     }
+    this.syncBattleTopChrome();
   }
 
   generateShopItems() {
@@ -2685,7 +2845,8 @@ class Game {
     // 随机出售：道具栏扩展（一次购买，立刻生效）
     // 概率不宜过高，避免每家店都刷出
     if (Math.random() < 0.35) {
-      const curCap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 4;
+      const curCap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 10;
+      if (curCap >= 10) return items;
       const cost = 120 + Math.max(0, curCap - 4) * 60;
       items.shopItems.push({
         kind: "item_slot_upgrade",
@@ -3095,6 +3256,7 @@ class Game {
     document.getElementById("map-view")?.classList.add("hidden");
     document.getElementById("battle-view")?.classList.add("hidden");
     combosView.classList.remove("hidden");
+    this.syncBattleTopChrome();
   }
 
   hideCombosView() {
@@ -3104,6 +3266,7 @@ class Game {
     } else {
       document.getElementById("battle-view")?.classList.remove("hidden");
     }
+    this.syncBattleTopChrome();
   }
 
   // ===== 牌库构成查看（与战队选择同款：当前职业 + 按职业网格 + 右侧详情） =====
@@ -3191,6 +3354,7 @@ class Game {
     document.getElementById("event-view")?.classList.add("hidden");
     document.getElementById("combos-view")?.classList.add("hidden");
     deckView.classList.remove("hidden");
+    this.syncBattleTopChrome();
   }
 
   updateDeckViewDetail(cardId) {
@@ -3228,6 +3392,7 @@ class Game {
     } else {
       document.getElementById("map-view")?.classList.remove("hidden");
     }
+    this.syncBattleTopChrome();
   }
 
   updateGoldDisplay() {
@@ -3623,7 +3788,7 @@ class Game {
       if (window.audioManager) {
         window.audioManager.defeat();
       }
-      this.showModal("失败", "全军覆没，旅程结束。");
+      this.gameOver();
     }
   }
 
@@ -3660,6 +3825,7 @@ class Game {
     document.getElementById("map-view")?.classList.add("hidden");
     document.getElementById("battle-view")?.classList.add("hidden");
     view.classList.remove("hidden");
+    this.syncBattleTopChrome();
 
     goldEl.textContent = `💰 获得 ${goldReward} 金币（已自动领取）`;
     this.rewardPending = { cardId: dropCardId, itemId: dropItemId, cardDone: false, itemDone: false };
@@ -3689,7 +3855,8 @@ class Game {
       if (nameEl) nameEl.textContent = item ? `${item.icon} 道具：${item.name}` : dropItemId;
       if (descEl) { descEl.textContent = item ? (item.description || "") : ""; descEl.style.display = item && item.description ? "" : "none"; }
       if (effectEl) { effectEl.textContent = item ? (item.detail || "") : ""; effectEl.style.display = item && item.detail ? "" : "none"; }
-      const full = Array.isArray(this.items) && this.items.length >= 4;
+      const cap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 10;
+      const full = Array.isArray(this.items) && this.items.length >= cap;
       const takeBtn = itemSection.querySelector("#reward-item-take");
       const replaceBtn = itemSection.querySelector("#reward-item-replace");
       const replaceSlots = document.getElementById("reward-item-replace-slots");
@@ -3698,23 +3865,21 @@ class Game {
       if (replaceSlots) {
         replaceSlots.classList.toggle("hidden", !full);
         if (full) {
-          const btns = Array.from(replaceSlots.querySelectorAll("button"));
-          btns.forEach((btn, idx) => {
-            const slotIndex = idx;
-            const currentId = this.items[slotIndex];
+          replaceSlots.innerHTML = "";
+          for (let i = 0; i < cap; i++) {
+            const currentId = this.items[i];
             const data = currentId && typeof ITEMS_DB !== "undefined" ? ITEMS_DB[currentId] : null;
-            if (data) {
-              btn.innerHTML = `${data.icon || "🎁"} ${data.name || currentId}`;
-              btn.title = data.detail || data.description || "";
-              btn.disabled = false;
-            } else {
-              btn.innerHTML = `槽位${slotIndex + 1}`;
-              btn.title = "";
-              btn.disabled = true;
-            }
-            btn.dataset.slot = String(slotIndex);
-            btn.onclick = () => this.rewardReplaceItem(slotIndex);
-          });
+            const btn = document.createElement("button");
+            btn.className = "secondary-btn save-slot-btn";
+            btn.innerHTML = `
+              <div class="save-slot-title">槽位 ${i + 1}</div>
+              <div class="save-slot-time">${data ? `${data.icon || "🎁"} ${data.name || currentId}` : "空"}</div>
+            `;
+            btn.title = data ? (data.detail || data.description || "") : "";
+            btn.disabled = !data;
+            btn.onclick = () => this.rewardReplaceItem(i);
+            replaceSlots.appendChild(btn);
+          }
         }
       }
     } else {
@@ -3760,7 +3925,8 @@ class Game {
 
   rewardTakeItem() {
     const id = this.rewardPending && this.rewardPending.itemId;
-    if (id && this.items.length < 4) {
+    const cap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 10;
+    if (id && this.items.length < cap) {
       this.items.push(id);
       this.renderItems();
       this.log(`获得道具：${typeof ITEMS_DB !== "undefined" && ITEMS_DB[id] ? ITEMS_DB[id].name : id}`, "player");
@@ -3772,7 +3938,8 @@ class Game {
   rewardReplaceItem(slot) {
     const id = this.rewardPending && this.rewardPending.itemId;
     if (!id) { this.rewardPending.itemDone = true; document.getElementById("reward-item-section").classList.add("hidden"); return; }
-    slot = Math.min(3, Math.max(0, slot));
+    const cap = this.getItemSlotCapacity ? this.getItemSlotCapacity() : 10;
+    slot = Math.min(cap - 1, Math.max(0, slot));
     this.items[slot] = id;
     this.renderItems();
     this.log(`替换道具槽位${slot + 1}：${typeof ITEMS_DB !== "undefined" && ITEMS_DB[id] ? ITEMS_DB[id].name : id}`, "player");
@@ -3854,7 +4021,18 @@ class Game {
   // 渲染手牌
   renderHand(hand) {
     const container = document.getElementById("hand-container");
-    container.innerHTML = "";
+    if (!container) return;
+    let strip = document.getElementById("hand-strip");
+    if (!strip) {
+      strip = document.createElement("div");
+      strip.id = "hand-strip";
+      strip.className = "hand-strip";
+      strip.setAttribute("aria-label", "手牌");
+      container.innerHTML = "";
+      container.appendChild(strip);
+    } else {
+      strip.innerHTML = "";
+    }
 
     for (let i = 0; i < hand.length; i++) {
       const cardId = hand[i];
@@ -3905,7 +4083,7 @@ class Game {
             cardEl.appendChild(badge);
           }
         } catch (_) {}
-        container.appendChild(cardEl);
+        strip.appendChild(cardEl);
       }
     }
 
@@ -3925,9 +4103,11 @@ class Game {
       }
     } catch (_) {}
 
-    const cards = container.querySelectorAll(".card");
+    const cards = strip.querySelectorAll(".card");
     cards.forEach((card) => {
       const idx = parseInt(card.dataset.index, 10);
+      // 扑克牌叠放：默认按顺序叠层，避免后面的被压到下面
+      try { card.style.zIndex = String(idx + 1); } catch (_) {}
       const cardData = CARDS_DB[hand[idx]];
       const prof = cardData && cardData.profession ? cardData.profession : "common";
       const canUseThisCard = !cardData || this.isProfessionActive(prof);
@@ -3946,10 +4126,15 @@ class Game {
 
       card.addEventListener("click", () => {
         card.classList.toggle("selected-discard");
+        // 选中牌置顶
+        try { card.style.zIndex = card.classList.contains("selected-discard") ? "999" : String(idx + 1); } catch (_) {}
         this.updateEstimatedDamage();
         // 扑克牌叠放时：选中牌滚动到完全可见
         try {
-          if (window.matchMedia && window.matchMedia("(max-width: 600px)").matches) {
+          if (
+            (window.matchMedia && window.matchMedia("(max-width: 600px)").matches) ||
+            document.getElementById("battle-view")?.classList.contains("battle-one-screen")
+          ) {
             card.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
           }
         } catch (_) {}
@@ -3976,6 +4161,12 @@ class Game {
       });
     });
     this.updateEstimatedDamage();
+
+    // 手牌：能铺开就居中；超出则靠左滚动
+    try {
+      const overflow = strip.scrollWidth > strip.clientWidth + 2;
+      container.classList.toggle("hand-overflow", overflow);
+    } catch (_) {}
   }
 
   // 渲染道具（含悬停显示效果）
@@ -4463,6 +4654,12 @@ class Game {
     try {
       const wrap = document.getElementById("enemy-sprite");
       if (!wrap) return;
+      if (this._enemyStateSprite && typeof this._enemyStateSprite.destroy === "function") {
+        try {
+          this._enemyStateSprite.destroy();
+        } catch (_) {}
+      }
+      this._enemyStateSprite = null;
       wrap.innerHTML = "";
       if (!this.enemy || !window.pixelRenderer) return;
 
@@ -4475,9 +4672,97 @@ class Game {
         (String(id).startsWith("boss_") ? "boss" : null) ||
         "thug";
 
-      const sprite = window.pixelRenderer.createAnimatedSprite(key, 1.55, 3);
-      if (sprite) wrap.appendChild(sprite);
+      const ctrl =
+        typeof window.pixelRenderer.createStateSprite === "function"
+          ? window.pixelRenderer.createStateSprite(key, 1.55, 3)
+          : null;
+      if (ctrl && ctrl.el) {
+        wrap.appendChild(ctrl.el);
+        this._enemyStateSprite = ctrl;
+      }
     } catch (_) {}
+  }
+
+  flashEnemySpriteHit() {
+    const wrap = document.getElementById("enemy-sprite");
+    if (!wrap) return;
+    wrap.classList.remove("enemy-sprite-hit");
+    void wrap.offsetWidth;
+    wrap.classList.add("enemy-sprite-hit");
+    setTimeout(() => {
+      try {
+        wrap.classList.remove("enemy-sprite-hit");
+      } catch (_) {}
+    }, 480);
+  }
+
+  /** 我方结算对敌造成伤害时：受击闪白 + 有伤害的对应职业队友播 attack */
+  notifyPlayerDamageToEnemy(played) {
+    this.flashEnemySpriteHit();
+    if (!played || !this._allyStateSprites) return;
+    const seen = new Set();
+    for (const p of played) {
+      if ((p.baseDamage || 0) <= 0) continue;
+      const prof = p.profession;
+      if (!prof || prof === "common" || seen.has(prof)) continue;
+      seen.add(prof);
+      const ctrl = this._allyStateSprites[prof];
+      if (ctrl && typeof ctrl.playAttack === "function") ctrl.playAttack(400);
+    }
+  }
+
+  /** 敌人出手时播敌人 attack 帧 */
+  playEnemyAttackAnim(ms) {
+    if (this._enemyStateSprite && typeof this._enemyStateSprite.playAttack === "function") {
+      this._enemyStateSprite.playAttack(Math.max(200, ms || 450));
+    }
+  }
+
+  openBattleDrawer(which) {
+    const backdrop = document.getElementById("battle-drawer-backdrop");
+    if (!backdrop) return;
+    ["battle-drawer-log", "battle-drawer-discard"].forEach((id) => {
+      const d = document.getElementById(id);
+      if (d) {
+        d.classList.remove("open");
+        d.setAttribute("aria-hidden", "true");
+      }
+    });
+    backdrop.classList.remove("hidden");
+    backdrop.setAttribute("aria-hidden", "false");
+    if (which === "log") {
+      const d = document.getElementById("battle-drawer-log");
+      if (d) {
+        d.classList.add("open");
+        d.setAttribute("aria-hidden", "false");
+      }
+      const bl = document.getElementById("battle-log");
+      if (bl) bl.scrollTop = 0;
+    } else {
+      const d = document.getElementById("battle-drawer-discard");
+      if (d) {
+        d.classList.add("open");
+        d.setAttribute("aria-hidden", "false");
+      }
+      this.renderDiscardList();
+      const list = document.getElementById("discard-list");
+      if (list) list.scrollTop = 0;
+    }
+  }
+
+  closeBattleDrawers() {
+    ["battle-drawer-log", "battle-drawer-discard"].forEach((id) => {
+      const d = document.getElementById(id);
+      if (d) {
+        d.classList.remove("open");
+        d.setAttribute("aria-hidden", "true");
+      }
+    });
+    const b = document.getElementById("battle-drawer-backdrop");
+    if (b) {
+      b.classList.add("hidden");
+      b.setAttribute("aria-hidden", "true");
+    }
   }
 
   // 敌人血量演出：平滑过渡（不重复刷新 debuff/意图，避免卡顿）
@@ -4663,9 +4948,7 @@ class Game {
     this.setBattleControlsEnabled(false);
     const handContainer = document.getElementById("hand-container");
     if (handContainer) handContainer.classList.add("game-ended");
-    setTimeout(() => {
-      this.showModal("失败", "全军覆没，旅程结束。");
-    }, 500);
+    setTimeout(() => this.showDeathOverlay(), 350);
   }
 
   setBattleControlsEnabled(enabled) {
@@ -5035,16 +5318,44 @@ class Game {
 
     const discardToggle = document.getElementById("discard-toggle");
     const discardCount = document.getElementById("discard-count");
+    const openLog = () => this.openBattleDrawer("log");
+    const toggleDisc = () => this.toggleDiscardPanel();
     if (discardToggle) {
-      discardToggle.addEventListener("click", () => {
-        this.toggleDiscardPanel();
+      discardToggle.addEventListener("click", toggleDisc);
+      discardToggle.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggleDisc();
+        }
       });
     }
     if (discardCount) {
-      discardCount.addEventListener("click", () => {
-        this.toggleDiscardPanel();
+      discardCount.addEventListener("click", toggleDisc);
+    }
+    const btnLog = document.getElementById("btn-battle-log-drawer");
+    const btnDisc = document.getElementById("btn-battle-discard-drawer");
+    if (btnLog) btnLog.addEventListener("click", openLog);
+    if (btnDisc) btnDisc.addEventListener("click", toggleDisc);
+    document.getElementById("battle-drawer-log-close")?.addEventListener("click", () => this.closeBattleDrawers());
+    document.getElementById("battle-drawer-discard-close")?.addEventListener("click", () => this.closeBattleDrawers());
+    const backdrop = document.getElementById("battle-drawer-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", () => this.closeBattleDrawers());
+    }
+    if (!this._battleDrawerEscBound) {
+      this._battleDrawerEscBound = true;
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        const logO = document.getElementById("battle-drawer-log")?.classList.contains("open");
+        const discO = document.getElementById("battle-drawer-discard")?.classList.contains("open");
+        if (logO || discO) {
+          e.preventDefault();
+          this.closeBattleDrawers();
+        }
       });
     }
+
+    document.getElementById("battle-settings-btn")?.addEventListener("click", () => this.showSettingsModal());
 
     // 商店按钮
     const shopRefresh = document.getElementById("shop-refresh");
@@ -5291,18 +5602,12 @@ class Game {
   }
 
   toggleDiscardPanel() {
-    const list = document.getElementById("discard-list");
-    const title = document.getElementById("discard-toggle");
-    if (!list || !title) return;
-    const willShow = list.classList.contains("hidden");
-    if (willShow) {
-      list.classList.remove("hidden");
-      title.textContent = "查看弃牌堆 ▲";
-      this.renderDiscardList();
-    } else {
-      list.classList.add("hidden");
-      title.textContent = "查看弃牌堆 ▼";
+    const disc = document.getElementById("battle-drawer-discard");
+    if (disc && disc.classList.contains("open")) {
+      this.closeBattleDrawers();
+      return;
     }
+    this.openBattleDrawer("discard");
   }
 
   renderDiscardList() {

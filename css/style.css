@@ -505,6 +505,437 @@ body {
   font-size: 13px;
 }
 
+/* —— 战斗单页核心 + 日志/弃牌抽屉 —— */
+#battle-view.battle-one-screen {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  max-height: calc(100vh - 42px);
+  min-height: calc(100vh - 42px);
+  /* 允许卡牌 hover 放大溢出显示，避免被容器裁切 */
+  overflow: visible;
+}
+#battle-view.battle-one-screen #battle-layout {
+  overflow: visible;
+}
+
+/* battle 单屏：pixel-panel 默认 overflow:hidden，会裁切 hover 放大 */
+#battle-view.battle-one-screen .pixel-panel {
+  overflow: visible;
+}
+
+/* hover 放大：层级抬到控制区/敌人面板之上 */
+#battle-view.battle-one-screen #card-table .card {
+  position: relative;
+  will-change: transform;
+}
+#battle-view.battle-one-screen #card-table .card:hover,
+#battle-view.battle-one-screen #card-table .card.selected-discard {
+  z-index: 5000;
+}
+
+/* 控制区本身不裁切 */
+#battle-view.battle-one-screen #control-section {
+  overflow: visible;
+}
+#battle-view.battle-one-screen #battle-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+#battle-view.battle-one-screen #battle-sidebar {
+  width: 198px;
+  flex-shrink: 0;
+  padding: 10px 10px;
+  font-size: 12px;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+  align-self: stretch;
+  max-height: 100%;
+}
+
+.battle-settings-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+#battle-view.battle-one-screen .battle-sidebar-title {
+  font-size: 13px;
+}
+#battle-main.battle-arena {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.battle-header-felt {
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #0b2214 0%, #143d28 42%, #0c1f14 100%);
+  border-radius: 10px;
+  padding: 6px 8px;
+  position: relative;
+  border: 1px solid rgba(46, 139, 87, 0.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.battle-header-felt::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.045) 2px,
+    rgba(0, 0, 0, 0.045) 4px
+  );
+  opacity: 0.55;
+}
+#battle-view.battle-one-screen #played-area-wrap {
+  /* 不占满纵向剩余空间，避免出牌区与手牌之间大块空白 */
+  flex: 0 0 auto;
+  min-height: 64px;
+  max-height: none;
+  overflow: visible;
+  margin-bottom: 0;
+  padding: 6px 10px;
+}
+
+/* 单屏：压缩出牌空槽高度，减少底部空白 */
+#battle-view.battle-one-screen .played-container {
+  min-height: 88px;
+  gap: 6px;
+}
+#battle-view.battle-one-screen .played-slot {
+  width: 86px;
+  height: 108px;
+  border-radius: 10px;
+}
+#battle-view.battle-one-screen .played-slot .card {
+  transform: scale(0.88);
+}
+
+/* —— 出牌区 + 手牌区 视觉合并（card-table）—— */
+#card-table.card-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+#battle-view.battle-one-screen #card-table.card-table {
+  position: relative;
+  z-index: 40;
+  border-radius: 14px;
+}
+#card-table .card-table__played,
+#card-table .card-table__hand {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+#card-table .card-table__played {
+  padding: 0;
+}
+#card-table .card-table__hand-row {
+  margin-top: 0;
+}
+#card-table .card-table__hand {
+  padding: 0;
+}
+#card-table .hand-label {
+  margin: 8px 0 6px;
+}
+
+/* 单屏：隐藏“本回合出牌…”与“手牌”标题，让牌区更大 */
+#battle-view.battle-one-screen #card-table .section-label,
+#battle-view.battle-one-screen #card-table .hand-label {
+  display: none !important;
+}
+
+/* 单屏：牌区空间够时，卡牌整体放大一档（仅战斗） */
+#battle-view.battle-one-screen #card-table .card {
+  width: 92px;
+  height: 132px;
+}
+#battle-view.battle-one-screen #card-table .card-icon {
+  font-size: 30px;
+}
+#battle-view.battle-one-screen #card-table .card-name {
+  font-size: 11px;
+}
+#battle-view.battle-one-screen #card-table .card-type,
+#battle-view.battle-one-screen #card-table .card-cost {
+  font-size: 11px;
+}
+
+/* 单屏：出牌区与手牌区之间彻底“贴合”，去掉中间那条视觉分割线 */
+#battle-view.battle-one-screen #card-table.card-table {
+  gap: 0;
+}
+#battle-view.battle-one-screen #card-table .card-table__hand-row {
+  margin-top: -8px;
+  position: relative;
+  z-index: 12;
+}
+
+/* 出牌槽位跟着放大一点，避免卡牌显得拥挤 */
+#battle-view.battle-one-screen #card-table .played-container {
+  min-height: 108px;
+  overflow-y: visible;
+}
+#battle-view.battle-one-screen #card-table .played-slot {
+  width: 106px;
+  height: 146px;
+  overflow: visible;
+}
+#battle-view.battle-one-screen #card-table .played-slot .card {
+  transform: scale(0.92);
+}
+
+/* 手牌叠放：卡变大后，叠放距离稍微加大 */
+#battle-view.battle-one-screen #card-table .hand-strip .card:not(:first-child) {
+  margin-left: -30px;
+}
+
+/* boss-fire 的光效仍挂在 #played-area-wrap 上，保留圆角对齐外层面板 */
+#card-table #played-area-wrap.boss-fire::before,
+#card-table #played-area-wrap.boss-fire::after {
+  border-radius: 10px;
+}
+#battle-view.battle-one-screen #hand-row {
+  flex-shrink: 1;
+  min-height: 0;
+  max-height: none;
+  flex: 1 1 auto;
+}
+#battle-view.battle-one-screen #hand-row {
+  margin-top: 2px;
+}
+#battle-view.battle-one-screen #hand-section {
+  max-height: 100%;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+#battle-view.battle-one-screen #hand-container {
+  overflow: visible;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0;
+}
+/* 横向滚动只作用在条带上；外层不裁切 hover 上移（避免 overflow-x:auto 把纵向也变成裁切） */
+#battle-view.battle-one-screen #hand-container .hand-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 12px;
+  min-height: 178px;
+  height: 178px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 10px 8px;
+  box-sizing: border-box;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 手牌超宽时（JS 会加 .hand-overflow）：改为靠左便于滚动 */
+#battle-view.battle-one-screen #hand-container.hand-overflow .hand-strip {
+  justify-content: flex-start;
+}
+
+/* hover 放大时置顶，避免被面板边缘/相邻区域盖住 */
+#battle-view.battle-one-screen #card-table .card:hover {
+  z-index: 80;
+}
+
+/* 桌面端：手牌不叠放，充分利用左右空间 */
+#battle-view.battle-one-screen #card-table .hand-strip .card:not(:first-child) {
+  margin-left: 0;
+}
+#battle-view.battle-one-screen #control-section {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 0;
+}
+.battle-bottom-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+.battle-bottom-bar--sidebar {
+  justify-content: stretch;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 0;
+}
+.pile-info--sidebar {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  padding: 2px 0 0;
+}
+.pile-info--sidebar .pile-item {
+  display: flex;
+  flex: 1 1 0;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.pile-info--sidebar .label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
+.pile-info--sidebar .value {
+  font-weight: 800;
+}
+.battle-bar-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.battle-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.52);
+  z-index: 220;
+}
+.battle-drawer-backdrop.hidden {
+  display: none !important;
+}
+.battle-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: min(52vh, 440px);
+  z-index: 230;
+  background: linear-gradient(165deg, #1c1c36 0%, #0f0f1c 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  transform: translateY(105%);
+  transition: transform 0.26s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+.battle-drawer.open {
+  transform: translateY(0);
+}
+.battle-drawer-header {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 700;
+  font-size: 15px;
+}
+.battle-drawer-close {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.battle-drawer-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.battle-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px 14px;
+}
+.log-section-drawer {
+  background: transparent;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+}
+.battle-log-scroll {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 13px;
+  font-family: monospace;
+  min-height: 140px;
+  max-height: min(40vh, 360px);
+}
+.discard-list-drawer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-y: auto;
+  max-height: min(40vh, 340px);
+  align-content: flex-start;
+}
+@keyframes enemy-sprite-hit-anim {
+  0%,
+  100% {
+    transform: translate(0, 0);
+    filter: brightness(1);
+  }
+  25% {
+    transform: translate(-4px, 1px);
+    filter: brightness(1.85);
+  }
+  55% {
+    transform: translate(5px, -2px);
+    filter: brightness(1.25);
+  }
+  80% {
+    transform: translate(-2px, 0);
+    filter: brightness(1.1);
+  }
+}
+.enemy-pixel.enemy-sprite-hit {
+  animation: enemy-sprite-hit-anim 0.48s ease-out;
+}
+@media (max-width: 920px) {
+  #battle-view.battle-one-screen {
+    max-height: none;
+    min-height: auto;
+    overflow-y: auto;
+  }
+  #battle-view.battle-one-screen #played-area-wrap {
+    max-height: none;
+  }
+  #battle-view.battle-one-screen #hand-row {
+    max-height: none;
+  }
+}
+
 #battle-sidebar {
   width: 230px;
   flex-shrink: 0;
@@ -2027,10 +2458,15 @@ body {
 }
 
 #hand-container {
+  display: block;
+  min-height: 72px;
+}
+#hand-container .hand-strip {
   display: flex;
   gap: 10px;
   justify-content: center;
   flex-wrap: wrap;
+  align-items: center;
   min-height: 72px;
 }
 
@@ -2510,15 +2946,184 @@ body {
   color: #aaa;
 }
 
+/* 死亡结算画面 */
+.death-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+}
+.death-overlay.hidden {
+  display: none !important;
+}
+.death-modal {
+  width: min(520px, calc(100vw - 26px));
+  border-radius: 14px;
+  padding: 18px 18px 16px;
+  background: linear-gradient(145deg, rgba(26, 26, 46, 0.96) 0%, rgba(8, 10, 20, 0.96) 100%);
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.7);
+}
+.death-title {
+  font-size: 22px;
+  font-weight: 900;
+  color: #ff6b6b;
+  margin-bottom: 10px;
+}
+.death-desc {
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.death-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.death-actions .action-btn,
+.death-actions .secondary-btn {
+  min-width: 120px;
+}
+
 /* 顶部状态栏 */
 #top-status-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   padding: 6px 12px;
   background: rgba(0, 0, 0, 0.3);
   border-radius: 10px;
   margin-bottom: 6px;
+}
+
+.top-status-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.top-status-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.battle-top-items {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  max-width: min(520px, 55vw);
+}
+
+.battle-top-items.hidden {
+  display: none !important;
+}
+
+.battle-top-items-row {
+  margin: 0;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.battle-top-items-row .section-label-inline {
+  display: none !important;
+}
+
+.battle-top-items .item-slots {
+  flex-wrap: nowrap;
+}
+
+.battle-top-items .item-slots {
+  gap: 4px;
+}
+
+.battle-top-items .item-slot {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  font-size: 16px;
+}
+
+/* 顶栏道具：去掉“卡槽边框”，像图2那样直接叠放 */
+.battle-top-items .item-slot {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.battle-top-items .item-slot.has-item {
+  background: transparent;
+  border: none;
+}
+
+/* 顶栏只显示“已装备”的道具图标，不显示空槽占位
+   注意：外层槽位由 game.js 渲染（class=item-slot, data-item-id），内部图标由 ItemUtil.createItemElement 渲染（class="item-slot has-item"）。
+*/
+.battle-top-items .item-slot[data-item-id=""] {
+  display: none !important;
+}
+
+/* 顶栏外层槽位不占“格子”视觉 */
+.battle-top-items .item-slot {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 顶栏内层图标：纯图标，无框；保留稀有度边色逻辑但不画边 */
+.battle-top-items .item-slot.has-item {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 18px;
+  line-height: 1;
+}
+
+#game-container.in-battle #save-btn,
+#game-container.in-battle #music-btn {
+  display: none !important;
+}
+
+/* 战斗时：右上角这些信息左侧栏已有，隐藏给道具/画面留空间 */
+#game-container.in-battle #top-floor-item,
+#game-container.in-battle #combos-btn,
+#game-container.in-battle #deck-btn {
+  display: none !important;
+}
+
+.settings-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.settings-quick-actions .secondary-btn {
+  flex: 1 1 auto;
+  min-width: 120px;
 }
 
 .status-item {
@@ -3428,6 +4033,45 @@ button:disabled:hover,
   overflow: hidden;
 }
 
+/* 战斗单屏：牌面 hover 放大需要溢出显示（不裁切） */
+#battle-view.battle-one-screen #card-table.pixel-panel {
+  overflow: visible;
+  /* 整块牌桌统一绿色桌布（勿再用 transparent，否则会露出外层深蓝，像两块区域） */
+  background: radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.08) 0, transparent 55%),
+    radial-gradient(circle at 80% 80%, rgba(0, 0, 0, 0.25) 0, transparent 60%),
+    #0d3a28;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 关键：#hand-section / #played-area-wrap 有更强的 id 级样式，需在 battle 单屏里强制去框，
+   让“出牌区在上、手牌在下”看起来是同一个区域（中间无边框），但 DOM/布局不变。 */
+#battle-view.battle-one-screen #card-table #hand-section,
+#battle-view.battle-one-screen #card-table #played-area-wrap {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+#battle-view.battle-one-screen #card-table #hand-section {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+#battle-view.battle-one-screen #card-table #played-area-wrap {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+#battle-view.battle-one-screen #card-table .card-table__played,
+#battle-view.battle-one-screen #card-table .card-table__hand {
+  overflow: visible;
+}
+#battle-view.battle-one-screen #battle-main.battle-arena {
+  overflow: visible;
+}
+
 .pixel-panel::before,
 .pixel-panel::after {
   /* 移除边角铆钉装饰（影响观感） */
@@ -3460,6 +4104,8 @@ button:disabled:hover,
   padding: 15px;
   min-width: 280px;
   max-width: 350px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
   font-size: 14px;
   line-height: 1.6;
@@ -3833,9 +4479,10 @@ button:disabled:hover,
     font-size: 15px;
   }
 
-  /* 战斗日志区域压缩高度 */
-  #battle-log {
-    height: 86px;
+  /* 抽屉内日志由 .battle-log-scroll 控制高度 */
+  .battle-log-scroll {
+    min-height: 100px;
+    max-height: 34vh;
   }
 
   /* 卡牌整体再缩小一档（避免两行） */
@@ -3853,7 +4500,7 @@ button:disabled:hover,
   }
 
   /* 扑克牌叠放：手牌/出牌区横向叠放，选中抬起并完全显示 */
-  #hand-container,
+  #hand-container .hand-strip,
   .played-container {
     flex-wrap: nowrap;
     justify-content: flex-start;
@@ -3862,16 +4509,16 @@ button:disabled:hover,
     padding: 6px 8px;
     scroll-snap-type: x mandatory;
   }
-  #hand-container .card,
+  #hand-container .hand-strip .card,
   .played-container .card {
     flex: 0 0 auto;
     scroll-snap-align: center;
   }
-  #hand-container .card:not(:first-child),
+  #hand-container .hand-strip .card:not(:first-child),
   .played-container .card:not(:first-child) {
     margin-left: -26px; /* 叠放 */
   }
-  #hand-container .card.selected-discard {
+  #hand-container .hand-strip .card.selected-discard {
     margin-left: 0;
     transform: translateY(-10px) scale(1.02);
     z-index: 10;
