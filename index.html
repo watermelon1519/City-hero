@@ -69,6 +69,10 @@
       </div>
       <p class="team-build-hint">选择 1–3 个已解锁职业组成战队（点击切换选中）</p>
       <div id="team-build-professions" class="team-build-prof-list"></div>
+      <div id="team-build-prof-intro" class="team-build-prof-intro hidden">
+        <div class="combos-title" style="font-size: 14px;">📋 已选职业 · 特点与技能</div>
+        <div id="team-build-prof-intro-content"></div>
+      </div>
       <div class="team-build-main">
         <div class="team-build-deck-area">
           <div class="combos-header" style="margin-top: 12px;">
@@ -102,6 +106,18 @@
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
           <button id="endless-init-item-cancel" class="secondary-btn">跳过</button>
           <button id="endless-init-item-confirm" class="action-btn">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 正常关卡：选完队伍后询问是否新手教学 -->
+    <div id="tutorial-choice-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>🎮 开始冒险</h2>
+        <p style="margin: 12px 0 16px; color: #ddd;">是否第一次游玩？需要新手教学吗？</p>
+        <div style="display:flex; justify-content:center; gap:12px; margin-top:16px;">
+          <button id="tutorial-choice-yes" class="action-btn">需要教学</button>
+          <button id="tutorial-choice-no" class="secondary-btn">跳过</button>
         </div>
       </div>
     </div>
@@ -385,13 +401,18 @@
               <div id="enemy-sprite" class="enemy-pixel" aria-hidden="true"></div>
               <div class="enemy-hp-bar">
                 <div id="enemy-hp-fill" class="hp-fill"></div>
-              </div>
-              <div class="enemy-hp-text">
-                <span id="enemy-hp-current">60</span> / <span id="enemy-hp-max">60</span>
+                <div class="enemy-hp-text">
+                  <span id="enemy-hp-current">60</span> / <span id="enemy-hp-max">60</span>
+                </div>
               </div>
               <div class="enemy-debuffs" id="enemy-debuffs"></div>
               <div class="enemy-intent" id="enemy-intent">
-                ⚔️ 下回合：攻击 (8 伤害)
+                <div class="enemy-intent-wrap">
+                  <span class="enemy-intent-icon" id="enemy-intent-icon">⚔️</span>
+                  <span class="enemy-intent-dmg" id="enemy-intent-dmg">8</span>
+                  <span class="enemy-intent-skills" id="enemy-intent-skills"></span>
+                  <span class="enemy-intent-hit" id="enemy-intent-hit"></span>
+                </div>
               </div>
             </div>
           </div>

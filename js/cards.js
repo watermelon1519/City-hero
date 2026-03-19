@@ -491,6 +491,47 @@ const CARDS_DB = {
     archetype: "割",
     description: "给敌人施加流血 +10（本身不造成伤害）",
     detail: "【大招】流氓的持续输出技能\n给敌人施加流血 +10（每回合结算并逐步衰减）\n本身不造成直接伤害\n用于打厚血Boss/精英更稳定"
+  },
+  // 易伤：敌人受到的伤害增加
+  hooligan_wound: {
+    id: "hooligan_wound",
+    name: "破绽",
+    icon: "🩸",
+    type: "attack",
+    profession: "hooligan",
+    archetype: "攻",
+    cost: 1,
+    damage: 6,
+    vulnerable: 2,
+    description: "造成 6 伤害，敌人易伤 2 回合（受到伤害 +25%/层）",
+    detail: "【易伤】打中破绽，后续伤害更高\n易伤：敌人受到的伤害每层 +25%\n适合先手挂易伤再爆发"
+  },
+  // 下回合攻击力增加
+  hooligan_charge: {
+    id: "hooligan_charge",
+    name: "蓄力",
+    icon: "⬆️",
+    type: "skill",
+    profession: "hooligan",
+    archetype: "攻",
+    cost: 1,
+    nextTurnDamageBuff: 1.5,
+    description: "下回合我方造成的伤害 ×1.5",
+    detail: "【蓄力】本回合不出手，下回合爆发\n下回合所有伤害 ×1.5\n与高伤牌配合打出爆发"
+  },
+  // 损耗生命换护盾
+  hooligan_bloodshield: {
+    id: "hooligan_bloodshield",
+    name: "以血换盾",
+    icon: "🩸",
+    type: "skill",
+    profession: "hooligan",
+    archetype: "防",
+    cost: 1,
+    loseHp: 5,
+    shield: 14,
+    description: "损耗 5 生命，获得 14 护盾",
+    detail: "【卖血】用生命换护盾，无视现有护盾直接扣血\n适合残血前先叠盾或配合治疗使用"
   }
 };
 

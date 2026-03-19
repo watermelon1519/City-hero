@@ -113,6 +113,63 @@ const ITEMS_DB = {
     },
   },
 
+  // ===== 职业专属技能（每回合结束被动，开局随职业获得） =====
+  skill_hooligan: {
+    id: "skill_hooligan",
+    name: "流氓·街头恢复",
+    icon: "👊",
+    type: "skill",
+    profession: "hooligan",
+    rarity: "starter",
+    description: "每回合结束后回复 6 点生命",
+    detail: "【职业技能】流氓专属被动\n每回合结束若流氓存活则回复 6 血\n不占道具栏位，选流氓即拥有",
+    skillEffect: { endOfTurnHeal: 6, name: "街头恢复" },
+  },
+  skill_dog: {
+    id: "skill_dog",
+    name: "狗·看家",
+    icon: "🐕",
+    type: "skill",
+    profession: "dog",
+    rarity: "starter",
+    description: "每回合结束后获得 4 点护盾",
+    detail: "【职业技能】狗专属被动\n每回合结束若狗存活则获得 4 护盾\n不占道具栏位，选狗即拥有",
+    skillEffect: { endOfTurnShield: 4, name: "看家" },
+  },
+  skill_coder: {
+    id: "skill_coder",
+    name: "程序员·摸鱼",
+    icon: "💻",
+    type: "skill",
+    profession: "coder",
+    rarity: "starter",
+    description: "每回合结束后，下回合多抽 1 张牌",
+    detail: "【职业技能】程序员专属被动\n每回合结束则下回合多抽 1 张\n不占道具栏位，选程序员即拥有",
+    skillEffect: { endOfTurnDraw: 1, name: "摸鱼" },
+  },
+  skill_teacher: {
+    id: "skill_teacher",
+    name: "老师·课后辅导",
+    icon: "📚",
+    type: "skill",
+    profession: "teacher",
+    rarity: "starter",
+    description: "每回合结束后全队回复 2 点生命",
+    detail: "【职业技能】老师专属被动\n每回合结束全队回复 2 血\n不占道具栏位，选老师即拥有",
+    skillEffect: { endOfTurnHealAll: 2, name: "课后辅导" },
+  },
+  skill_security: {
+    id: "skill_security",
+    name: "保安·站岗",
+    icon: "👮",
+    type: "skill",
+    profession: "security",
+    rarity: "starter",
+    description: "每回合结束后获得 6 点护盾",
+    detail: "【职业技能】保安专属被动\n每回合结束若保安存活则获得 6 护盾\n不占道具栏位，选保安即拥有",
+    skillEffect: { endOfTurnShield: 6, name: "站岗" },
+  },
+
   // ===== 成就解锁道具 =====
   coupon_book: {
     id: "coupon_book",
@@ -243,6 +300,17 @@ const ITEMS_DB = {
   },
 
   // ===== 流氓专属道具 =====
+  thick_skin: {
+    id: "thick_skin",
+    name: "厚脸皮",
+    icon: "🛡️",
+    type: "profession",
+    rarity: "starter",
+    profession: "hooligan",
+    description: "在第一回合开始时，获得**8**点护盾。",
+    detail: "【流氓初始】战斗第一回合开始\n为流氓角色获得 8 点护盾\n开局稳住血量",
+    firstTurnShield: 8,
+  },
   brass_knuckles: {
     id: "brass_knuckles",
     name: "🥊 指虎",
@@ -467,6 +535,7 @@ const RARITY_COLORS = {
   rare: "#4a90d9",
   epic: "#a335ee",
   legendary: "#ff8000",
+  starter: "#6b7280",
 };
 
 // 工具函数

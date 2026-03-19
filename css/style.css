@@ -702,9 +702,9 @@ body {
   transform: scale(0.92);
 }
 
-/* 手牌叠放：卡变大后，叠放距离稍微加大 */
+/* 手牌超出后用扑克牌式叠放；默认不叠放（避免少量手牌看起来乱） */
 #battle-view.battle-one-screen #card-table .hand-strip .card:not(:first-child) {
-  margin-left: -30px;
+  margin-left: 0;
 }
 
 /* boss-fire 的光效仍挂在 #played-area-wrap 上，保留圆角对齐外层面板 */
@@ -752,9 +752,29 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
-/* 手牌超宽时（JS 会加 .hand-overflow）：改为靠左便于滚动 */
+/* 手牌：禁止默认收缩，否则会为了“塞进容器”把卡牌挤瘪（看起来就像变窄） */
+#battle-view.battle-one-screen #hand-container .hand-strip .card {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+}
+
+/* 手牌超宽时（JS 会加 .hand-overflow）：改为扑克牌式叠放（右边遮住左边） */
 #battle-view.battle-one-screen #hand-container.hand-overflow .hand-strip {
+  /* 交给 JS 计算 translateX：这里先用左起点，避免整体贴右 */
   justify-content: flex-start;
+  gap: 0;
+  overflow-x: visible; /* 不用横向滚动，靠叠盖解决“放不下” */
+}
+
+/* 叠放距离：后面的牌会盖住前面的牌 */
+#battle-view.battle-one-screen #hand-container.hand-overflow .hand-strip .card:not(:first-child) {
+  margin-left: -30px;
+}
+
+/* 叠放模式下禁止 flex shrink：避免卡牌宽度被压缩 */
+#battle-view.battle-one-screen #hand-container.hand-overflow .hand-strip .card {
+  flex: 0 0 auto;
+  flex-shrink: 0;
 }
 
 /* hover 放大时置顶，避免被面板边缘/相邻区域盖住 */
@@ -762,10 +782,7 @@ body {
   z-index: 80;
 }
 
-/* 桌面端：手牌不叠放，充分利用左右空间 */
-#battle-view.battle-one-screen #card-table .hand-strip .card:not(:first-child) {
-  margin-left: 0;
-}
+/* 桌面端：除非手牌 overflow，否则维持不叠放 */
 #battle-view.battle-one-screen #control-section {
   display: flex;
   flex-wrap: wrap;
@@ -773,6 +790,23 @@ body {
   gap: 6px;
   margin: 0;
   padding: 4px 0;
+}
+
+/* 非单屏：手牌超出后也用扑克牌式叠放，避免横向拖拽/错位 */
+#hand-container.hand-overflow .hand-strip {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  gap: 0;
+  overflow-x: visible;
+}
+#hand-container.hand-overflow .hand-strip .card:not(:first-child) {
+  margin-left: -30px;
+}
+
+/* 非单屏叠放模式同样禁止 shrink */
+#hand-container.hand-overflow .hand-strip .card {
+  flex: 0 0 auto;
+  flex-shrink: 0;
 }
 .battle-bottom-bar {
   display: flex;
@@ -1321,6 +1355,8 @@ body {
   transform: scale(0.92);
   transform-origin: center;
 }
+
+
 .played-slot.broken {
   border-color: rgba(255, 80, 0, 0.55);
   background: rgba(255, 80, 0, 0.10);
@@ -1737,6 +1773,7 @@ body {
   overflow: hidden;
   margin-bottom: 5px;
   border: 2px solid #555;
+  position: relative;
 }
 
 .hp-fill {
@@ -1747,8 +1784,16 @@ body {
 }
 
 .enemy-hp-text {
-  font-size: 14px;
-  font-weight: bold;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 2px 0 rgba(0,0,0,0.55);
+  pointer-events: none;
+  z-index: 2;
 }
 
 .enemy-debuffs {
@@ -1780,13 +1825,56 @@ body {
 .debuff-badge.bleed { color: #ff4d6d; }
 
 .enemy-intent {
-  margin-top: 4px;
-  padding: 4px 8px;
-  background: rgba(255, 68, 68, 0.16);
-  border-radius: 8px;
-  color: #ff6b6b;
+  margin-top: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
   font-size: 12px;
   line-height: 1.2;
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.enemy-intent-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.enemy-intent-icon {
+  color: #ff6b6b;
+  font-weight: 900;
+}
+
+.enemy-intent-dmg {
+  color: #ff6b6b;
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+
+.enemy-intent-skills {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 2px;
+}
+
+.enemy-intent-skill-icon {
+  font-size: 14px;
+  color: #ffd700;
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,0.45));
+}
+
+.enemy-intent-hit {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  margin-left: 4px;
 }
 
 /* 队友区域 */
@@ -1810,6 +1898,8 @@ body {
   border: 2px solid rgba(255, 255, 255, 0.2);
   transition: all 0.3s;
   position: relative;
+  box-sizing: border-box;
+  overflow: hidden; /* 防止数字/护盾在槽位很窄时轻微出界 */
 }
 
 .teammate-slot.drag-over {
@@ -1873,8 +1963,17 @@ body {
   align-items: center;
   gap: 2px;
 }
-.hp-bar-wrap {
+
+.hp-row {
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.hp-bar-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   height: 8px;
   background: rgba(0,0,0,0.4);
   border-radius: 4px;
@@ -1891,7 +1990,16 @@ body {
 }
 .hp-bar-fill.low { background: linear-gradient(90deg, #ff6b6b, #c0392b); }
 .hp-bar-fill.mid { background: linear-gradient(90deg, #ffd93d, #f39c12); }
-.hp-text { font-size: 11px; color: #aaa; }
+.hp-text { font-size: 13px; color: #c7f9e6; font-weight: 900; text-shadow: 0 1px 2px rgba(0,0,0,0.55); }
+
+/* 血量文字覆盖在血条中间，避免上下拉长 */
+.hp-text {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
 .teammate-debuffs { display: flex; gap: 4px; justify-content: center; margin-top: 2px; flex-wrap: wrap; }
 .debuff-badge { font-size: 10px; padding: 1px 4px; border-radius: 4px; }
 .debuff-badge.poison { background: rgba(46, 204, 113, 0.3); color: #2ecc71; }
@@ -1938,22 +2046,53 @@ body {
 }
 
 .teammate-shield {
-  margin-top: 2px;
-  font-size: 11px;
-  color: #9cd3ff;
+  margin-top: 0;
+  font-size: 12px;
+  color: #bfe8ff;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+
+/* 紧凑模式：槽位宽度太小时，把血量/护盾从“覆盖/横排”改为“在血条下方显示” */
+.teammate-slot.compact-hp .hp-row {
+  flex-direction: column;
+  align-items: center;
   gap: 2px;
+}
+
+.teammate-slot.compact-hp .hp-bar-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  height: auto;
+}
+
+.teammate-slot.compact-hp .hp-text {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  margin-top: 1px;
+}
+
+.teammate-slot.compact-hp .teammate-shield {
+  justify-content: center;
+  max-width: 100%;
 }
 
 .shield-icon {
   font-size: 12px;
+  line-height: 1;
 }
 
 .shield-value {
-  min-width: 14px;
+  min-width: 0;
   text-align: right;
+  font-weight: 900;
+  white-space: nowrap;
 }
 
 .combo-indicator {
@@ -1977,13 +2116,22 @@ body {
   }
 }
 
-/* 道具槽 */
+/* 道具槽（参考 Slay the Spire：深灰/石质感，无紫框） */
 #item-section {
   padding: 8px 10px;
-  background: rgba(100, 50, 150, 0.25);
+  background: rgba(40, 40, 45, 0.6);
   border-radius: 10px;
-  border: 1px solid #643296;
+  border: 1px solid rgba(120, 120, 130, 0.6);
   min-width: 130px;
+}
+
+/* 战斗顶部道具：不需要单独“道具框”背景/边框 */
+.battle-top-items #item-section {
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  min-width: 0;
 }
 
 .section-label {
@@ -2003,7 +2151,7 @@ body {
   width: 70px;
   height: 90px;
   background: rgba(0, 0, 0, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(140, 140, 150, 0.5);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -2013,8 +2161,8 @@ body {
 }
 
 .item-slot.has-item {
-  border-color: #ffd700;
-  background: rgba(255, 215, 0, 0.1);
+  border-color: rgba(160, 160, 170, 0.7);
+  background: rgba(50, 50, 55, 0.5);
 }
 
 /* 手牌中的道具行不需要独立边框 */
@@ -2024,24 +2172,25 @@ body {
   padding: 0;
 }
 
-/* 战斗界面道具悬停说明 */
+/* 战斗界面道具悬停说明（参考：深灰框、标题黄、描述白、数值高亮绿） */
 #item-section { position: relative; }
 .item-tooltip {
   position: fixed;
   z-index: 10003;
   min-width: 220px;
   max-width: 320px;
-  padding: 12px;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  border: 2px solid #4ecca3;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  padding: 12px 14px;
+  background: #2c2c30;
+  border: 1px solid rgba(100, 100, 110, 0.8);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
   font-size: 13px;
   pointer-events: none;
 }
 .item-tooltip.hidden { display: none !important; }
-.item-tooltip-name { font-size: 15px; font-weight: bold; color: #fff; margin-bottom: 8px; }
-.item-tooltip-desc { color: #4ecca3; line-height: 1.4; margin-bottom: 6px; }
+.item-tooltip-name { font-size: 15px; font-weight: bold; color: #e6c35c; margin-bottom: 8px; }
+.item-tooltip-desc { color: #ddd; line-height: 1.5; margin-bottom: 6px; }
+.item-tooltip-desc .tooltip-value { color: #4ade80; font-weight: 600; }
 .item-tooltip-effect { color: #aaa; font-size: 12px; white-space: normal; line-height: 1.4; }
 
 /* 战斗信息：牌型 + 伤害 */
@@ -2528,6 +2677,8 @@ body {
 .card.selected-discard {
   outline: 3px solid #ffd700;
   box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+  /* 选中牌：像扑克牌一样轻微上拽 */
+  transform: translateY(-12px) scale(1.01);
 }
 
 .card.heal-bound {
@@ -4612,6 +4763,16 @@ button:disabled:hover,
     height: 92px;
   }
 
+  /* 手牌叠放触发（hand-overflow）时：不要再把卡牌整体压窄 */
+  #hand-container.hand-overflow .hand-strip .card {
+    width: 80px;
+    height: 115px;
+  }
+  #battle-view.battle-one-screen #hand-container.hand-overflow .hand-strip .card {
+    width: 92px;
+    height: 132px;
+  }
+
   .card-icon {
     font-size: 22px;
   }
@@ -4620,28 +4781,24 @@ button:disabled:hover,
     font-size: 9px;
   }
 
-  /* 扑克牌叠放：手牌/出牌区横向叠放，选中抬起并完全显示 */
-  #hand-container .hand-strip,
+  /* 扑克牌叠放：仅当手牌超出（hand-overflow）时才叠放 */
+  #hand-container.hand-overflow .hand-strip,
   .played-container {
     flex-wrap: nowrap;
     justify-content: flex-start;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+    overflow-x: visible;
     padding: 6px 8px;
-    scroll-snap-type: x mandatory;
   }
-  #hand-container .hand-strip .card,
+  #hand-container.hand-overflow .hand-strip .card,
   .played-container .card {
     flex: 0 0 auto;
-    scroll-snap-align: center;
   }
-  #hand-container .hand-strip .card:not(:first-child),
+  #hand-container.hand-overflow .hand-strip .card:not(:first-child),
   .played-container .card:not(:first-child) {
     margin-left: -26px; /* 叠放 */
   }
-  #hand-container .hand-strip .card.selected-discard {
-    margin-left: 0;
-    transform: translateY(-10px) scale(1.02);
+  #hand-container.hand-overflow .hand-strip .card.selected-discard {
+    transform: translateY(-14px) scale(1.01);
     z-index: 10;
   }
   .played-container .card:hover {

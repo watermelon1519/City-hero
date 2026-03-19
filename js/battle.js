@@ -131,6 +131,10 @@ class BattleSystem {
         }
       } catch (_) {}
 
+      if (this.turn === 1 && this.game && typeof this.game.applyFirstTurnItemEffects === "function") {
+        try { this.game.applyFirstTurnItemEffects(); } catch (_) {}
+      }
+
       // 捡回来：上回合回收的牌直接加入手牌
       const retrieveCount = this.retrieveForNextTurn.length;
       if (retrieveCount > 0) {
@@ -359,6 +363,20 @@ class BattleSystem {
           }
         }
 
+        // 损耗生命（如“以血换盾”）：先扣血（无视护盾），再结算该牌的护盾等
+        if (card.loseHp && typeof this.game.applyDamageToTeammate === "function") {
+          const ownerProf = card.profession || "common";
+          if (ownerProf !== "common" && this.game.isProfessionActive(ownerProf)) {
+            const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
+            const mult = 1 + (level - 1) * 0.5;
+            const amount = Math.max(0, Math.floor((card.loseHp || 0) * mult));
+            if (amount > 0) {
+              this.game.applyDamageToTeammate(ownerProf, amount, { ignoreShield: true, damageType: "direct" });
+              this.game.log(`${card.name}：${this.game.getProfessionLabel ? this.game.getProfessionLabel(ownerProf) : ownerProf} 损耗 ${amount} 生命`, "system");
+            }
+          }
+        }
+
         if (card.shield) {
           if (typeof this.game.addShield === "function") {
             const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
@@ -376,7 +394,10 @@ class BattleSystem {
             } else {
               targets = selected;
             }
-            const uniqueTargets = [...new Set(targets.filter((p) => this.game.isProfessionActive && this.game.isProfessionActive(p)))];
+            let uniqueTargets = [...new Set(targets.filter((p) => this.game.isProfessionActive && this.game.isProfessionActive(p)))];
+            if (uniqueTargets.length === 0 && this.game.teammates) {
+              uniqueTargets = Object.keys(this.game.teammates).filter((p) => this.game.isProfessionActive && this.game.isProfessionActive(p));
+            }
             uniqueTargets.forEach((p) => this.game.addShield(p, amount, card.name));
           }
         }
@@ -472,20 +493,31 @@ class BattleSystem {
             // 反噬伤害 = 仅被破坏牌的牌面伤害之和（不考虑牌型倍率）
             shatterSelfDamage = picked.reduce((s, p) => s + (p.baseDamage || 0), 0);
 
-            // 提前算出破坏后的数据，用于动画
+            // 提前算出破坏后的数据，用于动画。played 与 cardsToResolve 一一对应仅对“参与结算”的牌；
+            // buildPlayedArray 会跳过未激活职业的牌，故要用“当前在 played 中的下标”判定是否移除，不能用 findIndex(id)（重复牌会错位）
             const newCardsToResolve = [];
+            const newPlayedSlots = [];
+            let playedIdx = -1;
             for (let i = 0; i < cardsToResolve.length; i++) {
               const cardId = cardsToResolve[i];
               const card = CARDS_DB[cardId];
+              const slotIdx = Array.isArray(this.playedSlots) && this.playedSlots[i] != null ? this.playedSlots[i] : i;
               if (!card) {
                 newCardsToResolve.push(cardId);
+                newPlayedSlots.push(slotIdx);
                 continue;
               }
-              const pos = played.findIndex((p) => p.id === cardId);
-              if (pos >= 0 && removedIndices.has(pos)) {
+              if (!this.game.isProfessionActive(card.profession || "common")) {
+                newCardsToResolve.push(cardId);
+                newPlayedSlots.push(slotIdx);
+                continue;
+              }
+              playedIdx += 1;
+              if (removedIndices.has(playedIdx)) {
                 this.discard.push(cardId);
               } else {
                 newCardsToResolve.push(cardId);
+                newPlayedSlots.push(slotIdx);
               }
             }
             const tempCardsToResolve = newCardsToResolve;
@@ -528,6 +560,7 @@ class BattleSystem {
             // 动画结束后再更新数据和 UI（出牌区移除被破坏的牌）
             cardsToResolve = tempCardsToResolve;
             this.playedCards = cardsToResolve;
+            this.playedSlots = newPlayedSlots;
             played = tempPlayed;
             reducedResult = tempReducedResult || fullResult;
             if (typeof this.game.renderPlayedArea === "function") {
@@ -592,6 +625,20 @@ class BattleSystem {
           }
         }
       } catch (_) {}
+      try {
+        const nextBuff = this.game && this.game._battleNextTurnDamageBuff;
+        if (nextBuff && nextBuff > 1) {
+          raw = Math.max(0, Math.floor(raw * nextBuff));
+          this.game.log(`⬆️ 蓄力生效：本回合伤害 ×${nextBuff}`, "combo");
+          this.game._battleNextTurnDamageBuff = 1;
+        }
+      } catch (_) {}
+      const vuln = Math.max(0, Math.floor(this.enemy.vulnerable || 0));
+      if (vuln > 0) {
+        const mult = 1 + 0.25 * vuln;
+        raw = Math.max(0, Math.floor(raw * mult));
+        this.game.log(`易伤：伤害 ×${mult}（${vuln} 层）`, "combo");
+      }
       const dealt = Math.max(0, raw - armor);
       if (armor > 0) {
         this.game.log(`🛡️ ${this.enemy.name} 护甲减免 ${armor}，实际受到 ${dealt} 伤害`, "system");
@@ -599,6 +646,18 @@ class BattleSystem {
       const beforeHp = this.enemy.hp;
       this.enemy.hp -= dealt;
       this.damageThisTurn = dealt;
+
+      // 新规则：每次敌人受到伤害后，易伤值再叠加一次
+      if (dealt > 0) {
+        const inc = Math.max(0, Math.floor(this.enemy.vulnerableOnHit || 0));
+        if (inc > 0) {
+          this.enemy.vulnerable = (this.enemy.vulnerable || 0) + inc;
+          try {
+            if (typeof this.game.updateEnemyDebuffsAndIntent === "function") this.game.updateEnemyDebuffsAndIntent();
+          } catch (_) {}
+          this.game.log(`📉 易伤增长：+${inc}（当前 ${this.enemy.vulnerable}）`, "combo");
+        }
+      }
       try {
         if (dealt > 0 && this.game && typeof this.game.notifyPlayerDamageToEnemy === "function") {
           this.game.notifyPlayerDamageToEnemy(played);
@@ -733,7 +792,8 @@ class BattleSystem {
       let cleanse = 0;
       let bleed = 0;
       let stealGold = 0;
-      const debuffs = { stun: 0, slow: 0, weakness: 0, blind: 0 };
+      const debuffs = { stun: 0, slow: 0, weakness: 0, blind: 0, vulnerable: 0, vulnerableOnHit: 0 };
+      let nextTurnDamageMult = 1;
       for (let i = 0; i < cardsToResolve.length; i++) {
         const cardId = cardsToResolve[i];
         const card = CARDS_DB[cardId];
@@ -768,6 +828,21 @@ class BattleSystem {
         if (card.slow) debuffs.slow = Math.max(debuffs.slow, controlTurns(card.slow));
         if (card.weakness) debuffs.weakness = Math.max(debuffs.weakness, controlTurns(card.weakness));
         if (card.blind) debuffs.blind = Math.max(debuffs.blind, controlTurns(1));
+        if (card.vulnerable) {
+          // 新规则：易伤 +N 表示“每次敌人受到伤害后，易伤值再 +N（本场战斗持续叠加）”
+          const add = Math.max(0, Math.floor((card.vulnerable || 0) * levelMult));
+          if (add > 0) {
+            debuffs.vulnerable += add; // 立即增加易伤值
+            debuffs.vulnerableOnHit += add; // 之后每次受伤再增加相同增量
+          }
+        }
+        if (card.nextTurnDamageBuff && typeof card.nextTurnDamageBuff === "number" && card.nextTurnDamageBuff > 1) {
+          nextTurnDamageMult = Math.max(nextTurnDamageMult, card.nextTurnDamageBuff);
+        }
+      }
+      if (nextTurnDamageMult > 1) {
+        this.game._battleNextTurnDamageBuff = Math.max(this.game._battleNextTurnDamageBuff || 1, nextTurnDamageMult);
+        this.game.log(`⬆️ 蓄力：下回合伤害 ×${nextTurnDamageMult}`, "system");
       }
       this.drawForNextTurn = totalDraw;
       if (totalDraw > 0) this.game.log(`过牌：下回合多抽 ${totalDraw} 张`, "system");
@@ -878,6 +953,11 @@ class BattleSystem {
           }
         } catch (_) {}
       }
+      if (debuffs.vulnerable) {
+        this.enemy.vulnerable = (this.enemy.vulnerable || 0) + debuffs.vulnerable;
+        this.enemy.vulnerableOnHit = (this.enemy.vulnerableOnHit || 0) + (debuffs.vulnerableOnHit || debuffs.vulnerable);
+        this.game.log(`易伤：易伤值 +${debuffs.vulnerable}，每次受到伤害后再 +${debuffs.vulnerableOnHit}（本场战斗叠加）`, "system");
+      }
       if (stealGold > 0) {
         // 偷窃：直接增加金币（当前敌人没有独立金币池，所以按“掠夺”理解）
         this.game.gold = (this.game.gold || 0) + stealGold;
@@ -937,6 +1017,13 @@ class BattleSystem {
       this.playedCards = [];
       this.playedSlots = [];
     }
+
+    // 每回合结束后触发职业技能（如流氓回合结束回 5 血）
+    try {
+      if (this.game && typeof this.game.triggerProfessionSkillsEndOfTurn === "function") {
+        this.game.triggerProfessionSkillsEndOfTurn();
+      }
+    } catch (_) {}
 
     await this.enemyTurn();
 

@@ -8,10 +8,10 @@ const FLOORS = [
     enemies: [
       { id: "thug", name: "街头混混", hp: 95, atk: 8, icon: "👊" },
       { id: "gangster", name: "帮派成员", hp: 125, atk: 10, icon: "🧢" },
-      { id: "dealer", name: "黑市商贩", hp: 85, atk: 6, icon: "💰" },
-      { id: "pickpocket", name: "扒手", hp: 70, atk: 5, icon: "🦝" },
+      { id: "dealer", name: "黑市商贩", hp: 85, atk: 8, icon: "💰" },
+      { id: "pickpocket", name: "扒手", hp: 70, atk: 8, icon: "🦝" },
     ],
-    boss: { id: "boss_gang", name: "黑帮老大", hp: 420, atk: 12, icon: "🕶️", aiType: "boss1" },
+    boss: { id: "boss_gang", name: "黑帮老大", hp: 420, atk: 14, icon: "🕶️", aiType: "boss1" },
     events: [
       { id: "alley_cat", name: "巷子里的猫", icon: "🐱", description: "喂完猫，它蹭你时你突然想通了一招。", effect: { gold: 8, addRandomCard: true } },
       { id: "street_vendor", name: "路边摊", icon: "🍜", description: "深夜的路边摊飘来香味，老板送了你个小玩意儿。", effect: { gold: -10, healAll: true, addRandomItem: true } },
@@ -28,12 +28,12 @@ const FLOORS = [
     description: "学校不只是读书的地方，还有操场上的较量",
     theme: "school",
     enemies: [
-      { id: "bully", name: "校园恶霸", hp: 70, atk: 9, icon: "😤" },
-      { id: "cheater", name: "作弊学生", hp: 45, atk: 5, icon: "📝" },
-      { id: "fanatic", name: "成绩狂", hp: 55, atk: 7, icon: "📚" },
-      { id: "playground_kid", name: "调皮学生", hp: 35, atk: 4, icon: "⚽" },
+      { id: "bully", name: "校园恶霸", hp: 70, atk: 10, icon: "😤" },
+      { id: "cheater", name: "作弊学生", hp: 45, atk: 8, icon: "📝" },
+      { id: "fanatic", name: "成绩狂", hp: 55, atk: 9, icon: "📚" },
+      { id: "playground_kid", name: "调皮学生", hp: 35, atk: 8, icon: "⚽" },
     ],
-    boss: { id: "boss_principal", name: "恶魔校长", hp: 340, atk: 14, icon: "👔", aiType: "boss2_poison" },
+    boss: { id: "boss_principal", name: "恶魔校长", hp: 340, atk: 16, icon: "👔", aiType: "boss2_poison" },
     events: [
       { id: "exam_paper", name: "掉落的试卷", icon: "📄", description: "失主酬谢，还教你两招。", effect: { gold: 18, addRandomCard: true } },
       { id: "vending_machine", name: "自动贩卖机", icon: "🥤", description: "卡住了钱没了，但掉出个奇怪道具。", effect: { gold: -15, addRandomItem: true } },
@@ -50,12 +50,12 @@ const FLOORS = [
     description: "高楼大厦背后，程序员们在加班中战斗",
     theme: "tech",
     enemies: [
-      { id: "bug", name: "Bug怪", hp: 50, atk: 6, icon: "🐛" },
-      { id: "pm", name: "产品经理", hp: 80, atk: 10, icon: "📋" },
-      { id: "deadline", name: "Deadline", hp: 100, atk: 15, icon: "⏰" },
-      { id: "coffee_zombie", name: "咖啡僵尸", hp: 60, atk: 8, icon: "☕" },
+      { id: "bug", name: "Bug怪", hp: 50, atk: 9, icon: "🐛" },
+      { id: "pm", name: "产品经理", hp: 80, atk: 11, icon: "📋" },
+      { id: "deadline", name: "Deadline", hp: 100, atk: 16, icon: "⏰" },
+      { id: "coffee_zombie", name: "咖啡僵尸", hp: 60, atk: 10, icon: "☕" },
     ],
-    boss: { id: "boss_cto", name: "CTO大魔王", hp: 450, atk: 18, icon: "💀", aiType: "boss3_crack", armor: 8 },
+    boss: { id: "boss_cto", name: "CTO大魔王", hp: 450, atk: 20, icon: "💀", aiType: "boss3_crack", armor: 8 },
     events: [
       { id: "vending_coffee", name: "咖啡机", icon: "☕", description: "免费咖啡提神，隔壁工位落下个 U 盘（？）", effect: { gold: 10, buff: "damage", value: 1.1, addRandomItem: true } },
       { id: "code_review", name: "代码审查", icon: "👀", description: "修 Bug 拿奖金，还学到新写法。", effect: { gold: 28, addRandomCard: true } },
@@ -72,12 +72,12 @@ const FLOORS = [
     description: "看似平静的小区，暗藏着各种邻里纠纷",
     theme: "residential",
     enemies: [
-      { id: "noisy_neighbor", name: "吵闹邻居", hp: 55, atk: 7, icon: "📢" },
-      { id: "auntie", name: "广场舞大妈", hp: 90, atk: 12, icon: "💃" },
-      { id: "pet_dog", name: "恶犬", hp: 45, atk: 8, icon: "🐕" },
-      { id: "property_mgr", name: "物业大爷", hp: 70, atk: 6, icon: "🧓" },
+      { id: "noisy_neighbor", name: "吵闹邻居", hp: 55, atk: 10, icon: "📢" },
+      { id: "auntie", name: "广场舞大妈", hp: 90, atk: 13, icon: "💃" },
+      { id: "pet_dog", name: "恶犬", hp: 45, atk: 10, icon: "🐕" },
+      { id: "property_mgr", name: "物业大爷", hp: 70, atk: 10, icon: "🧓" },
     ],
-    boss: { id: "boss_hoa", name: "业委会主任", hp: 550, atk: 20, icon: "🏠", aiType: "boss4_tank" },
+    boss: { id: "boss_hoa", name: "业委会主任", hp: 550, atk: 22, icon: "🏠", aiType: "boss4_tank" },
     events: [
       { id: "lost_package", name: "快递驿站", icon: "📦", description: "帮邻居取件，小费外加一盒「神秘赠品」。", effect: { gold: 16, addRandomItem: true } },
       { id: "community_garden", name: "社区花园", icon: "🌻", description: "休息放松，和大爷学了手养生…兼格斗。", effect: { healAll: true, addRandomCard: true } },
@@ -94,12 +94,12 @@ const FLOORS = [
     description: "繁华的商业区，权力的中心，最终决战的舞台",
     theme: "city_center",
     enemies: [
-      { id: "corporate", name: "公司高管", hp: 100, atk: 14, icon: "👔" },
-      { id: "taxi_driver", name: "暴躁司机", hp: 70, atk: 11, icon: "🚕" },
-      { id: "street_food", name: "摊贩老板", hp: 80, atk: 10, icon: "🍢" },
-      { id: "influencer", name: "网红达人", hp: 60, atk: 9, icon: "📱" },
+      { id: "corporate", name: "公司高管", hp: 100, atk: 15, icon: "👔" },
+      { id: "taxi_driver", name: "暴躁司机", hp: 70, atk: 12, icon: "🚕" },
+      { id: "street_food", name: "摊贩老板", hp: 80, atk: 11, icon: "🍢" },
+      { id: "influencer", name: "网红达人", hp: 60, atk: 10, icon: "📱" },
     ],
-    boss: { id: "boss_mayor", name: "城市大Boss", hp: 650, atk: 25, icon: "👑", aiType: "boss5_control" },
+    boss: { id: "boss_mayor", name: "城市大Boss", hp: 650, atk: 28, icon: "👑", aiType: "boss5_control" },
     events: [
       { id: "subway", name: "地铁站", icon: "🚇", description: "捡到零钱，还有人塞给你一张「都市传说攻略卡」。", effect: { gold: 22, addRandomCard: true } },
       { id: "shopping_mall", name: "商场大促", icon: "🛒", description: "剁手了，但赠品里真有狠货。", effect: { gold: -35, addRandomItem: true } },
@@ -136,7 +136,7 @@ const HIDDEN_COMBOS = [
     professions: ["hooligan", "dog"],
     // 需要的卡牌组合：流氓攻击牌 + 狗攻击牌
     requiredCards: {
-      hooligan: ["hooligan_punch", "hooligan_kick", "hooligan_sand", "hooligan_combo"],
+      hooligan: ["hooligan_punch", "hooligan_kick", "hooligan_sand", "hooligan_combo", "hooligan_wound", "hooligan_charge"],
       dog: ["dog_bark", "dog_bite"]
     },
     minCards: 3,
@@ -239,7 +239,7 @@ const HIDDEN_COMBOS = [
     professions: ["security", "hooligan"],
     requiredCards: {
       security: ["security_baton", "security_flashlight"],
-      hooligan: ["hooligan_punch", "hooligan_kick", "hooligan_combo"]
+      hooligan: ["hooligan_punch", "hooligan_kick", "hooligan_combo", "hooligan_wound", "hooligan_charge"]
     },
     minCards: 3,
     effect: { damageMultiplier: 3.0, ignoreDefense: true },
@@ -274,7 +274,7 @@ const HIDDEN_COMBOS = [
     professions: ["security", "hooligan", "dog"],
     requiredCards: {
       security: ["security_whistle", "security_baton"],
-      hooligan: ["hooligan_punch", "hooligan_kick", "hooligan_combo"],
+      hooligan: ["hooligan_punch", "hooligan_kick", "hooligan_combo", "hooligan_wound", "hooligan_charge"],
       dog: ["dog_bark", "dog_bite"]
     },
     minCards: 4,
