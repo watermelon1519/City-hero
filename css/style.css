@@ -2110,11 +2110,12 @@ body.dragging-played-card #played-container .played-slot .card.card-in-play-area
   transform: translateY(-2px);
 }
 
-/* 治疗目标标记 */
+/* 治疗目标标记（须在槽位内，勿用负 top/right：.teammate-slot 有 overflow:hidden 会裁切） */
 .heal-marker {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  top: 3px;
+  right: 3px;
+  z-index: 4;
   padding: 2px 4px;
   border-radius: 999px;
   background: rgba(0, 255, 127, 0.18);
@@ -2123,6 +2124,8 @@ body.dragging-played-card #played-container .played-slot .card.card-in-play-area
   align-items: center;
   gap: 2px;
   font-size: 10px;
+  max-width: calc(100% - 6px);
+  box-sizing: border-box;
 }
 
 .heal-marker-icon {
@@ -2952,6 +2955,16 @@ body.dragging-played-card #played-container .played-slot .card.card-in-play-area
   border: 1px solid rgba(255, 255, 255, 0.22);
   font-size: 11px;
   color: #e8f7ff;
+}
+
+/* 出牌区药水：已有大试管立绘，角标只显示目标编号，避免再叠一个小试管 */
+.card-badge.card-badge--target-link {
+  font-size: 10px;
+  padding: 1px 5px;
+  min-width: 1.2em;
+  text-align: center;
+  font-weight: 800;
+  color: #b8ffe8;
 }
 
 /* Boss2 手牌毒：一眼可辨 */

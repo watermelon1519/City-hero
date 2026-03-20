@@ -5269,17 +5269,8 @@ class Game {
           cardEl.appendChild(levelBadge);
         }
 
-        // 若该单体治疗牌已绑定目标，显示 badge
-        const bind = this.healTargets[i];
-        if (bind && bind.tag) {
-          const badge = document.createElement("div");
-          badge.className = "card-badge";
-          const icon = bind.kind === "potion" ? "🧪" : "💚";
-          badge.textContent = `${icon}${bind.tag}`;
-          // 右上角流派角标占位：把功能 badge 下移，避免遮挡
-          if (cardEl.querySelector(".card-archetype-badge")) badge.style.top = "28px";
-          cardEl.appendChild(badge);
-        }
+        // healTargets 按「出牌区索引」存，不能用手牌下标 i 取，否则会与出牌区 0、1、2… 撞车，攻击牌也会误显示治疗角标。
+        // 治疗绑定只应在出牌区展示（见下方 renderPlayedArea）。
 
         // Boss2 手牌中毒：明显边框 + 左上角毒层角标
         try {
@@ -6107,6 +6098,24 @@ class Game {
           "\n（拖到其他格换位；拖到队友头像绑定治疗目标；点击头像选目标模式）";
       } else {
         cardEl.title = (cardEl.title || "") + "\n（拖到其他格换位或空白格；点击收回手牌）";
+      }
+      // 出牌区单体治疗：绑定目标后用角标显示编号，与队友头像上的 🧪/💚 编号对应（药水牌不再重复画试管图标）
+      if (isHeal) {
+        const bind = this.healTargets[playedIndex];
+        if (bind && bind.tag) {
+          const badge = document.createElement("div");
+          badge.className = "card-badge";
+          if (bind.kind === "potion" || cardId === "potion") {
+            badge.classList.add("card-badge--target-link");
+            badge.textContent = String(bind.tag);
+            badge.title = "治疗目标编号：与队友头像角标上的数字一致";
+          } else {
+            badge.textContent = `💚${bind.tag}`;
+            badge.title = "治疗目标编号：与队友头像角标一致";
+          }
+          if (cardEl.querySelector(".card-archetype-badge")) badge.style.top = "28px";
+          cardEl.appendChild(badge);
+        }
       }
       cardEl.addEventListener("dragstart", (e) => {
         try {
