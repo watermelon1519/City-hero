@@ -647,7 +647,8 @@ const CardUtil = {
   },
 
   // 创建卡牌元素
-  createCardElement(cardId, index) {
+  // opts.skipDefaultDrag：为 true 时不绑定默认 dragstart（出牌区由 game.js 单独写 dataTransfer，避免与手牌 JSON 冲突）
+  createCardElement(cardId, index, opts) {
     const card = CARDS_DB[cardId];
     if (!card) return null;
 
@@ -679,21 +680,23 @@ const CardUtil = {
     el.addEventListener("mouseenter", () => CardUtil.showCardTooltip(card, el));
     el.addEventListener("mouseleave", () => CardUtil.hideCardTooltip());
 
-    // 拖拽事件
-    el.addEventListener("dragstart", (e) => {
-      el.classList.add("dragging");
-      e.dataTransfer.setData(
-        "text/plain",
-        JSON.stringify({
-          cardId: cardId,
-          index: index,
-        })
-      );
-    });
+    // 拖拽事件（手牌区使用；出牌区传 skipDefaultDrag）
+    if (!opts || !opts.skipDefaultDrag) {
+      el.addEventListener("dragstart", (e) => {
+        el.classList.add("dragging");
+        e.dataTransfer.setData(
+          "text/plain",
+          JSON.stringify({
+            cardId: cardId,
+            index: index,
+          })
+        );
+      });
 
-    el.addEventListener("dragend", () => {
-      el.classList.remove("dragging");
-    });
+      el.addEventListener("dragend", () => {
+        el.classList.remove("dragging");
+      });
+    }
 
     return el;
   },

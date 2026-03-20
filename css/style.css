@@ -1015,6 +1015,9 @@ body {
   margin-top: 4px;
   font-size: 14px;
 }
+#battle-tile-rules-btn {
+  margin-top: 6px;
+}
 
 /* 左侧栏伤害公式（与右侧脱钩，仅显示公式） */
 #battle-sidebar .battle-sidebar-damage {
@@ -1356,6 +1359,144 @@ body {
   transform-origin: center;
 }
 
+/* 三格出牌区：攻击 / 控制 / 辅助（战后解锁） */
+.played-container.tri-region-open {
+  gap: 10px;
+}
+.played-slot.tri-region-slot {
+  border-color: rgba(180, 200, 255, 0.35);
+  background: rgba(30, 40, 70, 0.22);
+}
+.played-slot .tri-region-label {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: rgba(255, 230, 190, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+  z-index: 4;
+}
+.played-slot.tri-region-slot[data-tri-region="迟缓"] {
+  border-color: rgba(140, 150, 190, 0.55);
+  background: rgba(32, 36, 52, 0.35);
+}
+.played-slot.tri-region-slot[data-tri-region="低温"] {
+  border-color: rgba(120, 200, 255, 0.55);
+  background: rgba(22, 42, 62, 0.35);
+}
+/* 旧版攻/控/辅配色保留（存档或旧界面兼容） */
+.played-slot.tri-region-slot[data-tri-region="攻击"] {
+  border-color: rgba(255, 120, 100, 0.45);
+}
+.played-slot.tri-region-slot[data-tri-region="控制"] {
+  border-color: rgba(160, 120, 255, 0.45);
+}
+.played-slot.tri-region-slot[data-tri-region="辅助"] {
+  border-color: rgba(100, 220, 160, 0.45);
+}
+.played-slot.tri-region-plain {
+  border-style: dotted;
+  opacity: 0.88;
+}
+
+/* 三格模式：选中的落点 / 拖放悬停 */
+.played-slot.slot-pending-select {
+  box-shadow: 0 0 0 2px rgba(255, 220, 120, 0.95), inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 220, 120, 0.75);
+}
+.played-slot.drag-over-play {
+  box-shadow: 0 0 0 2px rgba(120, 200, 255, 0.85);
+  border-color: rgba(120, 200, 255, 0.65);
+}
+/* 出牌区内拖动已打牌换位 / 移格 */
+.played-slot.drag-over-reorder {
+  box-shadow: 0 0 0 2px rgba(255, 200, 80, 0.9);
+  border-color: rgba(255, 180, 60, 0.75);
+  background: rgba(55, 40, 20, 0.28);
+}
+.played-slot .card.card-in-play-area {
+  cursor: grab;
+  -webkit-user-drag: element;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* 避免图标/文字抢走 dragover，导致拖到另一张牌上无法完成换位 */
+.played-slot .card.card-in-play-area * {
+  pointer-events: none;
+}
+/* 出牌区拖动时：非源头的牌不接收指针，让事件落在槽位上，否则拖到另一张牌上 drop 常不触发（两 draggable 重叠） */
+body.dragging-played-card #played-container .played-slot .card.card-in-play-area:not(.played-drag-source) {
+  pointer-events: none !important;
+}
+.played-slot .card.card-in-play-area:active {
+  cursor: grabbing;
+}
+
+/* 牌型规则页：地块词典小标题与底部扩展说明 */
+.rules-tile-section-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 215, 140, 0.95);
+  margin: 12px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+}
+.rules-tile-section-title:first-child {
+  margin-top: 0;
+}
+.rules-list .rule-row--tile-catalog {
+  align-items: flex-start;
+}
+.rules-list .rule-row--tile-catalog .rule-desc {
+  text-align: left;
+  flex: 1;
+  line-height: 1.45;
+}
+.rules-tile-future-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  color: rgba(200, 205, 220, 0.88);
+  font-size: 12px;
+  line-height: 1.45;
+  font-style: italic;
+}
+
+/* 出牌区地块：悬停浮动说明（非持久占位，避免撑破牌桌布局） */
+.played-tile-tooltip {
+  position: fixed;
+  z-index: 9000;
+  max-width: 280px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(12, 14, 22, 0.96);
+  color: rgba(255, 248, 230, 0.95);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.played-tile-tooltip.hidden {
+  display: none !important;
+}
+.played-tile-tooltip__title {
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+  color: rgba(255, 230, 190, 0.98);
+}
+.played-tile-tooltip__line {
+  margin: 0.2em 0;
+  opacity: 0.95;
+}
 
 .played-slot.broken {
   border-color: rgba(255, 80, 0, 0.55);
@@ -1824,19 +1965,28 @@ body {
 .debuff-badge.blind { color: #b0b0b0; }
 .debuff-badge.bleed { color: #ff4d6d; }
 
+/* 敌人意图：图标条在立绘上方；说明在血条下方（见 .enemy-intent-desc） */
 .enemy-intent {
-  margin-top: 0;
-  padding: 0;
-  background: transparent;
-  border-radius: 0;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  z-index: 2;
+  pointer-events: auto;
+}
+
+.enemy-intent--icons {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 2px auto 6px;
+  padding: 5px 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 12px;
   line-height: 1.2;
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 3;
-  pointer-events: none;
 }
 
 .enemy-intent-wrap {
@@ -1844,6 +1994,30 @@ body {
   align-items: center;
   gap: 6px;
   justify-content: center;
+  flex-wrap: wrap;
+}
+
+.enemy-intent-desc {
+  font-size: 10px;
+  line-height: 1.35;
+  margin: 8px 0 4px;
+  padding: 8px 8px;
+  text-align: center;
+  color: rgba(255, 235, 210, 0.94);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  font-weight: 600;
+  max-width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  min-height: 0;
 }
 
 .enemy-intent-icon {
@@ -1866,15 +2040,31 @@ body {
 }
 
 .enemy-intent-skill-icon {
-  font-size: 14px;
+  font-size: 15px;
   color: #ffd700;
   filter: drop-shadow(0 2px 0 rgba(0,0,0,0.45));
+  cursor: help;
+  pointer-events: auto;
+  line-height: 1;
 }
 
 .enemy-intent-hit {
   color: rgba(255, 255, 255, 0.78);
   font-size: 11px;
   margin-left: 4px;
+}
+
+.enemy-intent.enemy-intent--icons.enemy-intent-danger .enemy-intent-wrap {
+  filter: drop-shadow(0 0 6px rgba(255, 60, 60, 0.55));
+}
+.enemy-intent-desc.enemy-intent-danger {
+  box-shadow: 0 0 10px rgba(255, 60, 60, 0.35);
+  border-color: rgba(255, 100, 80, 0.45);
+}
+.enemy-intent-destroy-icon {
+  font-size: 1.12em;
+  line-height: 1;
+  filter: drop-shadow(0 0 5px rgba(255, 80, 80, 0.55));
 }
 
 /* 队友区域 */
@@ -4144,6 +4334,46 @@ body {
 }
 .boss-skill-overlay .skill-title { font-size: 18px; color: #fff; margin-bottom: 8px; }
 .boss-skill-overlay .skill-desc { font-size: 14px; color: #ff8888; }
+
+/* 裂隙打手：破坏牌型前全屏技能视频 */
+.boss-intro-video-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+.boss-intro-video {
+  max-width: min(96vw, 960px);
+  max-height: 86vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 0 40px rgba(120, 60, 180, 0.45), 0 0 0 2px rgba(255, 255, 255, 0.08);
+  background: #000;
+}
+.boss-intro-video-skip {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 8px 20px;
+  border-radius: 8px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  background: rgba(30, 30, 40, 0.95);
+  color: #eee;
+}
+.boss-intro-video-skip:hover {
+  border-color: #e94560;
+  color: #fff;
+}
+
 @keyframes bossSkillPop {
   0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
   50% { transform: translate(-50%, -50%) scale(1.1); }

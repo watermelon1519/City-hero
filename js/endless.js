@@ -149,6 +149,7 @@
     const diffHpMult = 1 + (d - 1) * 0.25;
     const diffAtkMult = 1 + (d - 1) * 0.18;
 
+    // 与 combat-rules.js 中 FLOORS[].boss.aiType 对齐；若战役 Boss 顺延改层数，须同步此处
     const bossSkillByStage = {
       1: "boss1",
       2: "boss2_poison",

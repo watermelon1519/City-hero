@@ -29,6 +29,20 @@ class MapManager {
     this.nodes = [];
     this.currentNodeId = null;
 
+    // 第 1 层且尚未解锁「三格出牌区」：固定线性图 start → 必经精英「裂隙打手」→ Boss（演出+战后解锁）
+    try {
+      const g = this.game;
+      if (
+        g &&
+        this.floor === 1 &&
+        !g.triRegionUnlocked &&
+        g.mode !== "endless"
+      ) {
+        this.generateFloor1TriRegionGatePath(floor);
+        return;
+      }
+    } catch (_) {}
+
     const rows = 4 + this.floor; // 层数越多，行数越多
 
     const n = (id, type, row, col) => ({
@@ -154,6 +168,61 @@ class MapManager {
     this._unlockNext(start);
     
     // 更新楼层显示
+    this.game.updateFloorDisplay();
+  }
+
+  /**
+   * 第 1 层专用：单线必经精英（解锁三格出牌区），之后接 Boss。
+   */
+  generateFloor1TriRegionGatePath(floor) {
+    const n = (id, type, row, col) => ({
+      id,
+      type,
+      row,
+      col,
+      next: [],
+      visited: false,
+      unlocked: false,
+      enemy: null,
+      event: null,
+      shop: null,
+    });
+
+    const start = n("start", "start", 0, 1);
+    const elite = n("f1_tri_gate", "elite", 1, 1);
+    const tmpl =
+      floor && floor.enemies && floor.enemies.length
+        ? floor.enemies[Math.floor(Math.random() * floor.enemies.length)]
+        : { name: "街头混混", hp: 95, atk: 8, icon: "👊" };
+
+    elite.enemy = {
+      id: "tri_region_gate_elite",
+      name: "★裂隙打手",
+      hp: Math.floor(tmpl.hp * 1.85),
+      atk: Math.floor(tmpl.atk * 1.52),
+      icon: "🧱",
+      gold: 48 + this.floor * 12,
+      isElite: true,
+      aiType: "elite_tri_region_gate",
+    };
+
+    const boss = n("boss", "boss", 2, 1);
+    const b = floor && floor.boss ? floor.boss : { name: "Boss", hp: 420, atk: 14, icon: "🕶️", aiType: "boss1" };
+    boss.enemy = {
+      ...b,
+      hp: Math.floor(b.hp * (1 + this.floor * 0.1)),
+      atk: Math.floor(b.atk * (1 + this.floor * 0.05)),
+    };
+
+    start.next.push(elite.id);
+    elite.next.push(boss.id);
+
+    this.nodes.push(start, elite, boss);
+
+    this.currentNodeId = "start";
+    start.visited = true;
+    start.unlocked = true;
+    this._unlockNext(start);
     this.game.updateFloorDisplay();
   }
 

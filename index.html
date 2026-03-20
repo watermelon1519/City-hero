@@ -287,6 +287,11 @@
         <div class="rules-section-title">护盾与持续伤害</div>
         <div id="rules-shield-text" class="rules-code-text"></div>
       </div>
+      <div id="rules-tile-section" class="rules-section">
+        <div class="rules-section-title">出牌区 · 地块效果</div>
+        <div id="rules-tile-hint" class="rules-hint"></div>
+        <div id="rules-tile-list" class="rules-list"></div>
+      </div>
       <div id="rules-combos-section" class="rules-section">
         <div class="rules-section-title">隐藏组合（已发现）</div>
         <div id="combos-list" class="combos-list"></div>
@@ -373,6 +378,7 @@
 
           <div class="battle-sidebar-divider"></div>
           <button id="battle-rules-btn" class="secondary-btn battle-rules-btn">牌型 / 伤害规则</button>
+          <button type="button" id="battle-tile-rules-btn" class="secondary-btn battle-rules-btn hidden" title="查看地块效果说明（仅效果，不含固定格位）">地块说明</button>
 
           <div id="battle-bottom-bar" class="battle-bottom-bar battle-bottom-bar--sidebar">
             <button type="button" id="btn-battle-log-drawer" class="secondary-btn battle-bar-btn">📜 战斗日志</button>
@@ -398,15 +404,8 @@
                 <span class="enemy-name" id="enemy-name">街头混混</span>
                 <span class="enemy-layer" id="enemy-layer">第 1 层</span>
               </div>
-              <div id="enemy-sprite" class="enemy-pixel" aria-hidden="true"></div>
-              <div class="enemy-hp-bar">
-                <div id="enemy-hp-fill" class="hp-fill"></div>
-                <div class="enemy-hp-text">
-                  <span id="enemy-hp-current">60</span> / <span id="enemy-hp-max">60</span>
-                </div>
-              </div>
-              <div class="enemy-debuffs" id="enemy-debuffs"></div>
-              <div class="enemy-intent" id="enemy-intent">
+              <!-- 伤害数字 + 技能图标：在立绘上方 -->
+              <div class="enemy-intent enemy-intent--icons" id="enemy-intent">
                 <div class="enemy-intent-wrap">
                   <span class="enemy-intent-icon" id="enemy-intent-icon">⚔️</span>
                   <span class="enemy-intent-dmg" id="enemy-intent-dmg">8</span>
@@ -414,6 +413,16 @@
                   <span class="enemy-intent-hit" id="enemy-intent-hit"></span>
                 </div>
               </div>
+              <div id="enemy-sprite" class="enemy-pixel" aria-hidden="true"></div>
+              <div class="enemy-hp-bar">
+                <div id="enemy-hp-fill" class="hp-fill"></div>
+                <div class="enemy-hp-text">
+                  <span id="enemy-hp-current">60</span> / <span id="enemy-hp-max">60</span>
+                </div>
+              </div>
+              <!-- 技能说明文案：血条下方 -->
+              <div class="enemy-intent-desc" id="enemy-intent-desc" aria-live="polite"></div>
+              <div class="enemy-debuffs" id="enemy-debuffs"></div>
             </div>
           </div>
 
@@ -424,6 +433,7 @@
               <div class="section-label">本回合出牌（基础最多 5 张，道具可提高）</div>
               <div id="played-container" class="played-container"></div>
             </div>
+            <div id="played-tile-tooltip" class="played-tile-tooltip hidden" role="tooltip" aria-hidden="true"></div>
             <div id="hand-row" class="card-table__hand-row">
               <div id="hand-section" class="card-table__hand">
                 <div class="hand-label">手牌</div>

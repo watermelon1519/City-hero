@@ -63,6 +63,13 @@ class Game {
     this.shopItems = null;
     this.currentEvent = null;
 
+    // 三格出牌区（含迟缓/低温等地块 + 普通格）：击败第 1 层必经精英「裂隙打手」后永久解锁；未解锁时仍为 5 格（地块落位可随关卡扩展）
+    this.triRegionUnlocked = false;
+    /** 三格模式下：点击空地后，下一次打出落在此槽位（0 起） */
+    this._pendingPlaySlotIndex = null;
+    /** 出牌区拖动源：drop 时 Chrome 常读不到 getData，用内存索引兜底 */
+    this._playedDragSourceIndex = null;
+
     // 特效管理器
     this.effects = new EffectsManager(this);
 
@@ -104,9 +111,334 @@ class Game {
     } catch (_) {}
   }
 
-  // 基础出牌上限（可被道具提高）
+  // 基础出牌上限（可被道具提高）——三格加成不减少总格数，仍为 5
   getBasePlayedLimit() {
     return 5;
+  }
+
+  /** 永久解锁（商店/掉落等）或本场战斗中已揭示「前三格特殊地形」 */
+  hasTriRegionTerrain() {
+    if (this.triRegionUnlocked) return true;
+    if (this.battle && this.battle.triRegionTilesActive) return true;
+    return false;
+  }
+
+  /** 兼容旧调用：是否处于三格地形加成规则下 */
+  isTriRegionMode() {
+    return this.hasTriRegionTerrain();
+  }
+
+  /**
+   * 某槽位当前的地块效果类型（裂隙觉醒）：0=迟缓、1=低温，其余无特殊类型。
+   */
+  getTriRegionBonusKindForSlot(slotIdx) {
+    if (!this.hasTriRegionTerrain()) return null;
+    const s = Math.floor(Number(slotIdx));
+    if (s === 0) return "sluggish";
+    if (s === 1) return "cold";
+    return null;
+  }
+
+  /** 迟缓格：有伤害的牌基础伤害 ×0.5（与等级倍率叠乘） */
+  getTriRegionAttackDamageFactor(slotIdx) {
+    if (!this.hasTriRegionTerrain()) return 1;
+    return this.getTriRegionBonusKindForSlot(slotIdx) === "sluggish" ? 0.5 : 1;
+  }
+
+  /** 低温格：单体治疗、全队治疗、护盾 ×0.5（与等级倍率叠乘） */
+  getTriRegionHealShieldFactor(slotIdx) {
+    if (!this.hasTriRegionTerrain()) return 1;
+    return this.getTriRegionBonusKindForSlot(slotIdx) === "cold" ? 0.5 : 1;
+  }
+
+  /** 三格地形开启时，需要玩家指定落点（点击空地 + 出牌 / 拖入指定格） */
+  requiresExplicitPlaySlot() {
+    return this.hasTriRegionTerrain();
+  }
+
+  /**
+   * 地块效果「词典」：与具体槽位无关，供规则页 / 战斗说明展示；后续在此追加新 id 即可扩展。
+   */
+  getPlayedTileEffectCatalog() {
+    return [
+      {
+        id: "sluggish",
+        name: "迟缓",
+        tag: "负面",
+        shortDesc: "带「伤害」的牌：基础伤害 ×0.5（与等级倍率叠乘）。",
+        detailLines: [
+          "当牌落在具有【迟缓】的地块上时：带「伤害」的牌，基础伤害 ×0.5（与等级倍率叠乘）。",
+        ],
+      },
+      {
+        id: "cold",
+        name: "低温",
+        tag: "负面",
+        shortDesc: "单体治疗、全队治疗、护盾：效果 ×0.5（与等级倍率叠乘）。",
+        detailLines: [
+          "当牌落在具有【低温】的地块上时：单体治疗、全队治疗、护盾效果 ×0.5（与等级倍率叠乘）。",
+        ],
+      },
+    ];
+  }
+
+  /** 地块说明底部：未来还会有更多效果的地块 buff / debuff */
+  getPlayedTileFutureNote() {
+    return "地块在每关、每场战斗中的摆放位置可能不同，也可能随 Boss 或区域规则变化；具体以场上格子与战斗内提示为准。后续将陆续加入更多地块类型。";
+  }
+
+  /**
+   * 与「裂隙觉醒」等玩法绑定的槽位 → 地块类型（实现层仍按槽位取整；规则文案不绑定「第几格」）。
+   * @param {{ forRulesView?: boolean }} opts — forRulesView 为 true 时在规则弹窗中展示，不依赖本场是否已解锁
+   */
+  getPlayedTileDefinitions(opts = {}) {
+    const forRules = !!(opts && opts.forRulesView);
+    if (!forRules && !this.hasTriRegionTerrain()) return [];
+    const cat = this.getPlayedTileEffectCatalog();
+    const sluggish = cat.find((c) => c.id === "sluggish");
+    const cold = cat.find((c) => c.id === "cold");
+    return [
+      {
+        slotIndex: 0,
+        title: `地块 · ${sluggish ? sluggish.name : "迟缓"}`,
+        lines: sluggish ? [...sluggish.detailLines] : [],
+      },
+      {
+        slotIndex: 1,
+        title: `地块 · ${cold ? cold.name : "低温"}`,
+        lines: cold ? [...cold.detailLines] : [],
+      },
+      {
+        slotIndex: 2,
+        title: "地块 · 普通",
+        lines: ["无迟缓/低温等地块修正。"],
+      },
+    ];
+  }
+
+  /** 悬停某格时用的单条说明（含普通格）；标题不写「第几格」，仅描述该地块类型效果 */
+  getPlayedTileTooltipDefinition(slotIndex) {
+    const s = Math.floor(Number(slotIndex));
+    const defs = this.getPlayedTileDefinitions({ forRulesView: true });
+    const hit = defs.find((d) => d.slotIndex === s);
+    if (hit) return hit;
+    return { slotIndex: s, title: "普通地块", lines: ["无迟缓/低温等地块修正。"] };
+  }
+
+  hidePlayedTileTooltip() {
+    const tip = document.getElementById("played-tile-tooltip");
+    if (tip) {
+      tip.classList.add("hidden");
+      tip.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  positionPlayedTileTooltip(slotEl) {
+    const tip = document.getElementById("played-tile-tooltip");
+    if (!tip || !slotEl) return;
+    const r = slotEl.getBoundingClientRect();
+    const margin = 8;
+    const tw = tip.offsetWidth || 260;
+    const th = tip.offsetHeight || 48;
+    let left = r.left + r.width / 2 - tw / 2;
+    let top = r.bottom + 6;
+    if (left + tw > window.innerWidth - margin) left = window.innerWidth - tw - margin;
+    if (left < margin) left = margin;
+    if (top + th > window.innerHeight - margin) top = Math.max(margin, r.top - th - 6);
+    tip.style.left = `${Math.round(left)}px`;
+    tip.style.top = `${Math.round(top)}px`;
+  }
+
+  bindPlayedSlotTileTooltips(container) {
+    if (!container || container.dataset.tileTooltipBound) return;
+    container.dataset.tileTooltipBound = "1";
+    let hideTimer = null;
+    const scheduleHide = () => {
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(() => this.hidePlayedTileTooltip(), 80);
+    };
+    const clearHide = () => {
+      clearTimeout(hideTimer);
+    };
+    container.addEventListener("mouseover", (e) => {
+      const slot = e.target && e.target.closest ? e.target.closest(".played-slot") : null;
+      if (!slot || !container.contains(slot)) return;
+      if (!this.hasTriRegionTerrain()) return;
+      clearHide();
+      const tip = document.getElementById("played-tile-tooltip");
+      if (!tip) return;
+      const idx = parseInt(slot.dataset.slotIndex, 10);
+      const def = this.getPlayedTileTooltipDefinition(idx);
+      const lines = (def.lines || [])
+        .map((t) => `<div class="played-tile-tooltip__line">${String(t).replace(/</g, "&lt;")}</div>`)
+        .join("");
+      tip.innerHTML = `<div class="played-tile-tooltip__title">${def.title}</div>${lines}`;
+      tip.classList.remove("hidden");
+      tip.setAttribute("aria-hidden", "false");
+      requestAnimationFrame(() => {
+        this.positionPlayedTileTooltip(slot);
+      });
+    });
+    container.addEventListener("mouseout", (e) => {
+      const slot = e.target && e.target.closest ? e.target.closest(".played-slot") : null;
+      if (!slot || !container.contains(slot)) return;
+      const to = e.relatedTarget;
+      if (to && slot.contains(to)) return;
+      scheduleHide();
+    });
+  }
+
+  updateBattleTileRulesButtonVisibility() {
+    const btn = document.getElementById("battle-tile-rules-btn");
+    if (!btn) return;
+    const tri = typeof this.hasTriRegionTerrain === "function" ? this.hasTriRegionTerrain() : false;
+    btn.classList.toggle("hidden", !tri);
+  }
+
+  clearPendingPlaySlot() {
+    this._pendingPlaySlotIndex = null;
+    this.updatePlayedSlotSelectionHighlight();
+  }
+
+  /** 出牌区内两牌互换后，同步治疗目标绑定（按出牌区索引存） */
+  swapHealTargetsAtPlayedIndices(i, j) {
+    if (i === j) return;
+    const ht = this.healTargets;
+    if (!ht || typeof ht !== "object") return;
+    const ai = ht[i];
+    const aj = ht[j];
+    const hasI = Object.prototype.hasOwnProperty.call(ht, i);
+    const hasJ = Object.prototype.hasOwnProperty.call(ht, j);
+    if (hasI && hasJ) {
+      ht[i] = aj;
+      ht[j] = ai;
+    } else if (hasI && !hasJ) {
+      delete ht[i];
+      ht[j] = ai;
+    } else if (!hasI && hasJ) {
+      delete ht[j];
+      ht[i] = aj;
+    }
+    if (typeof this._pendingHealPlayedIndex === "number") {
+      if (this._pendingHealPlayedIndex === i) this._pendingHealPlayedIndex = j;
+      else if (this._pendingHealPlayedIndex === j) this._pendingHealPlayedIndex = i;
+    }
+  }
+
+  /**
+   * 从出牌区卸掉一张牌后，healTargets 按下标重排（与 splice 一致）
+   */
+  _reindexHealTargetsAfterPlayedRemove(removedIndex) {
+    const ht = this.healTargets;
+    if (!ht || typeof ht !== "object") return;
+    const next = {};
+    Object.keys(ht).forEach((k) => {
+      const i = parseInt(k, 10);
+      if (!Number.isFinite(i)) return;
+      if (i < removedIndex) next[String(i)] = ht[k];
+      else if (i > removedIndex) next[String(i - 1)] = ht[k];
+    });
+    this.healTargets = next;
+    if (typeof this._pendingHealPlayedIndex === "number") {
+      const p = this._pendingHealPlayedIndex;
+      if (p === removedIndex) this._pendingHealPlayedIndex = null;
+      else if (p > removedIndex) this._pendingHealPlayedIndex = p - 1;
+    }
+  }
+
+  /**
+   * 两牌互换：先把手牌当缓冲（与双击收回一致）——收回 A → 另一张挪到 A 的原格 → 再把 A 打回对方原格。
+   * 不依赖 HTML5 drop 的 payload / playedSlots 推算，避免拖到有牌格不生效。
+   */
+  swapPlayedCardsViaHandBuffer(from, to) {
+    const b = this.battle;
+    if (!b || from === to) return false;
+    const n = b.playedCards.length;
+    if (from < 0 || to < 0 || from >= n || to >= n) return false;
+    b._ensurePlayedParallelArrays();
+    const slotFrom = b.playedSlots[from];
+    const slotTo = b.playedSlots[to];
+    const ht = this.healTargets || {};
+    const snapFrom = ht[from] ? { ...ht[from] } : null;
+    const snapTo = ht[to] ? { ...ht[to] } : null;
+    if (typeof this._pendingHealPlayedIndex === "number") {
+      const p = this._pendingHealPlayedIndex;
+      if (p === from || p === to) this._pendingHealPlayedIndex = null;
+    }
+    if (!b.unplayCardFromArea(from)) return false;
+    this._reindexHealTargetsAfterPlayedRemove(from);
+    let newTo = to;
+    if (to > from) newTo = to - 1;
+    if (!b.movePlayedCardToSlot(newTo, slotFrom)) return false;
+    const hi = b.hand.length - 1;
+    if (!b.playCardToArea(hi, slotTo)) return false;
+    const iA = b.playedSlots.findIndex((s) => s === slotTo);
+    const iB = b.playedSlots.findIndex((s) => s === slotFrom);
+    if (iA < 0 || iB < 0) return false;
+    delete this.healTargets[iA];
+    delete this.healTargets[iB];
+    if (snapFrom) this.healTargets[iA] = snapFrom;
+    if (snapTo) this.healTargets[iB] = snapTo;
+    return true;
+  }
+
+  updatePlayedSlotSelectionHighlight() {
+    const container = document.getElementById("played-container");
+    if (!container) return;
+    const pending =
+      this.requiresExplicitPlaySlot() && typeof this._pendingPlaySlotIndex === "number"
+        ? Math.floor(this._pendingPlaySlotIndex)
+        : null;
+    container.querySelectorAll(".played-slot").forEach((el) => {
+      const idx = parseInt(el.dataset.slotIndex, 10);
+      const on = pending != null && Number.isFinite(idx) && idx === pending;
+      el.classList.toggle("slot-pending-select", !!on);
+    });
+  }
+
+  /**
+   * 预览用：为出牌区已打出的牌 + 假设继续打入手牌的牌，分配槽位序号（与 playCardToArea 一致）
+   */
+  getSimulatedPlayedSlotsForPreview(playedCards, playedSlots, totalEffectiveCount) {
+    const slots = this.getPlayedSlotCount ? this.getPlayedSlotCount() : 5;
+    const broken = this.getBrokenPlayedSlots ? this.getBrokenPlayedSlots() : new Set();
+    const used = new Set();
+    const out = [];
+    const nPlay = Array.isArray(playedCards) ? playedCards.length : 0;
+    for (let i = 0; i < totalEffectiveCount; i++) {
+      if (i < nPlay) {
+        const s = Array.isArray(playedSlots) && playedSlots[i] != null ? playedSlots[i] : i;
+        out.push(s);
+        used.add(s);
+      } else {
+        if (
+          i === nPlay &&
+          this.requiresExplicitPlaySlot() &&
+          typeof this._pendingPlaySlotIndex === "number"
+        ) {
+          const ps = Math.floor(this._pendingPlaySlotIndex);
+          if (ps >= 0 && ps < slots && !(broken && broken.has && broken.has(ps)) && !used.has(ps)) {
+            used.add(ps);
+            out.push(ps);
+            continue;
+          }
+        }
+        let slotIdx = -1;
+        for (let j = 0; j < slots; j++) {
+          if (broken && broken.has && broken.has(j)) continue;
+          if (used.has(j)) continue;
+          slotIdx = j;
+          break;
+        }
+        if (slotIdx >= 0) {
+          used.add(slotIdx);
+          out.push(slotIdx);
+        } else {
+          out.push(i);
+        }
+      }
+    }
+    return out;
   }
 
   getItemSlotCapacity() {
@@ -1347,6 +1679,7 @@ class Game {
   startNewGame(difficulty = 1) {
     this.gameStarted = true;
     this.isFirstBattle = true;
+    this.triRegionUnlocked = false;
     this.difficulty = Math.max(1, Math.floor(difficulty || 1));
     this.gold = 100;
     this.items = [];
@@ -1773,6 +2106,7 @@ class Game {
         this.unlockedProfessions = data.unlockedProfessions || this.unlockedProfessions;
         this.unlockedCards = data.unlockedCards || this.unlockedCards;
         this.unlockedItems = data.unlockedItems || this.unlockedItems;
+        this.triRegionUnlocked = !!data.triRegionUnlocked;
         
         // 隐藏开始页面
         const startScreen = document.getElementById('start-screen');
@@ -1825,6 +2159,7 @@ class Game {
           this.battle.turn = bs.turn || 1;
           this.battle.hand = bs.hand || [];
           this.battle.playedCards = bs.playedCards || [];
+          this.battle.playedSlots = bs.playedSlots || [];
           this.battle.deck = bs.deck || [];
           this.battle.discard = bs.discard || [];
           this.battle.hasMulligan = !!bs.hasMulligan;
@@ -1859,6 +2194,7 @@ class Game {
         enemy: this.enemy,
         hand: this.battle.hand,
         playedCards: this.battle.playedCards,
+        playedSlots: this.battle.playedSlots || [],
         deck: this.battle.deck,
         discard: this.battle.discard,
         hasMulligan: this.battle.hasMulligan,
@@ -1880,6 +2216,7 @@ class Game {
         unlockedProfessions: this.unlockedProfessions || [],
         unlockedCards: this.unlockedCards || [],
         unlockedItems: this.unlockedItems || [],
+        triRegionUnlocked: !!this.triRegionUnlocked,
         mapState,
         battleState,
         isFirstBattle: this.isFirstBattle,
@@ -1954,6 +2291,16 @@ class Game {
     } catch (_) {
       return true;
     }
+  }
+
+  /** 图鉴是否显示真实信息：成就解锁 / 背包持有 / 未默认锁定的道具 */
+  isItemDexRevealed(itemId) {
+    try {
+      if (Array.isArray(this.items) && this.items.includes(itemId)) return true;
+      if (Array.isArray(this.unlockedItems) && this.unlockedItems.includes(itemId)) return true;
+      if (typeof this.isItemUnlocked === "function" && this.isItemUnlocked(itemId)) return true;
+    } catch (_) {}
+    return false;
   }
 
   /** 商店/随机事件：仅通用、连击/爽感/辅助类，或当前编队职业的专属道具 */
@@ -2523,6 +2870,17 @@ class Game {
     if (battleRulesBtn) {
       battleRulesBtn.addEventListener("click", () => this.showCombosView());
     }
+    const battleTileRulesBtn = document.getElementById("battle-tile-rules-btn");
+    if (battleTileRulesBtn) {
+      battleTileRulesBtn.addEventListener("click", () => {
+        this.showCombosView();
+        requestAnimationFrame(() => {
+          try {
+            document.getElementById("rules-tile-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          } catch (_) {}
+        });
+      });
+    }
     
     // 绑定组合技关闭按钮
     const combosClose = document.getElementById('combos-close');
@@ -2544,6 +2902,7 @@ class Game {
         const hide = () => {
           try { if (typeof CardUtil !== "undefined" && CardUtil.hideCardTooltip) CardUtil.hideCardTooltip(); } catch (_) {}
           try { document.getElementById("damage-breakdown-tooltip")?.classList.add("hidden"); } catch (_) {}
+          try { if (typeof this.hidePlayedTileTooltip === "function") this.hidePlayedTileTooltip(); } catch (_) {}
         };
         document.addEventListener("mousedown", hide, true);
         document.addEventListener("scroll", hide, true);
@@ -2764,9 +3123,11 @@ class Game {
       e.preventDefault();
       slot.classList.remove("target-selected");
       const data = e.dataTransfer.getData("text/plain");
-      if (!data) return;
       try {
-        const parsed = JSON.parse(data);
+        const parsed = data ? JSON.parse(data) : {};
+        if (parsed.type === "played-card" && typeof parsed.playedIndex !== "number" && typeof this._playedDragSourceIndex === "number") {
+          parsed.playedIndex = this._playedDragSourceIndex;
+        }
         if (parsed.type === "heal" && typeof parsed.index === "number") {
           // 这里的 index 是“手牌索引”。治疗目标绑定必须落在“出牌区索引”上，否则结算时读不到。
           const handIndex = parsed.index;
@@ -2778,7 +3139,12 @@ class Game {
 
           // 直接把这张治疗牌打到出牌区，然后按出牌区索引绑定目标
           const beforeLen = (this.battle.playedCards || []).length;
-          const ok = this.battle.playCardToArea(handIndex);
+          const slotArg =
+            this.requiresExplicitPlaySlot() && typeof this._pendingPlaySlotIndex === "number"
+              ? this._pendingPlaySlotIndex
+              : undefined;
+          const ok = this.battle.playCardToArea(handIndex, slotArg);
+          if (ok && typeof slotArg === "number") this.clearPendingPlaySlot();
           if (!ok) return;
           const playedIdx = ((this.battle.playedCards || []).length - 1);
           if (playedIdx < 0 || playedIdx < beforeLen) return;
@@ -2789,11 +3155,18 @@ class Game {
           this.updateEstimatedDamage();
           this.updatePlayedCount();
         }
-        // 出牌区内的治疗牌：拖到队友头像即可绑定目标（不移动卡）
-        if (parsed.type === "heal-played" && typeof parsed.playedIndex === "number") {
-          this.bindHealTarget(parsed.playedIndex, prof, { source: "played-drag" });
-          this.renderHealMarkers();
-          this.renderPlayedArea(this.battle?.playedCards || []);
+        // 出牌区内的治疗牌：拖到队友头像即可绑定目标（不移动卡）；与「played-card」拖拽共用 payload
+        if (parsed.type === "played-card" && typeof parsed.playedIndex === "number") {
+          if (!this.battle) return;
+          const pi = parsed.playedIndex;
+          const pid = this.battle.playedCards[pi];
+          const pc = pid ? CARDS_DB[pid] : null;
+          const isHealSingle = !!(pc && pc.heal && !pc.healAll);
+          if (isHealSingle) {
+            this.bindHealTarget(pi, prof, { source: "played-drag" });
+            this.renderHealMarkers();
+            this.renderPlayedArea(this.battle?.playedCards || []);
+          }
         }
       } catch {
         // ignore
@@ -3827,6 +4200,36 @@ class Game {
         "提示：某些 Boss 会专门克制护盾（如中毒/火焰）。";
     }
 
+    // 2.7 出牌区地块：仅「效果词典」（不写第几格；位置随关卡/Boss/区域变化）
+    const rulesTileList = document.getElementById("rules-tile-list");
+    const rulesTileHint = document.getElementById("rules-tile-hint");
+    if (rulesTileHint) {
+      rulesTileHint.textContent =
+        "「地块」是落在出牌格上的规则修正，可为增益或减益。下方仅列出各类地块的数值效果；具体哪一格是什么地块，每场战斗可能不同，也可能随 Boss 或区域规则变化，请以场上格子为准。战斗中悬停格子可看当前格说明。";
+    }
+    if (rulesTileList && typeof this.getPlayedTileEffectCatalog === "function") {
+      rulesTileList.innerHTML = "";
+      const catalogTitle = document.createElement("div");
+      catalogTitle.className = "rules-tile-section-title";
+      catalogTitle.textContent = "地块效果（词典）";
+      rulesTileList.appendChild(catalogTitle);
+
+      this.getPlayedTileEffectCatalog().forEach((c) => {
+        const row = document.createElement("div");
+        row.className = "rule-row rule-row--tile-catalog";
+        const head = c.tag ? `【${c.tag}】${c.shortDesc || ""}` : (c.shortDesc || "");
+        row.innerHTML = `<span class="rule-name">${c.name}</span><span class="rule-desc">${head}</span>`;
+        rulesTileList.appendChild(row);
+      });
+
+      if (typeof this.getPlayedTileFutureNote === "function") {
+        const foot = document.createElement("div");
+        foot.className = "rules-tile-future-note";
+        foot.textContent = this.getPlayedTileFutureNote();
+        rulesTileList.appendChild(foot);
+      }
+    }
+
     // 3. 隐藏组合（放在最后）
     if (combosList) combosList.innerHTML = "";
     if (combosEmpty) {
@@ -4013,9 +4416,9 @@ class Game {
     // 解锁优先，其次按稀有度（legendary > epic > rare > common）
     const rarityRank = { legendary: 0, epic: 1, rare: 2, common: 3 };
     ids.sort((a, b) => {
-      // 图鉴语义：只有“已解锁获得过/已记录”的道具才显示真实信息
-      const ua = Array.isArray(this.unlockedItems) ? this.unlockedItems.includes(a) : (this.isItemUnlocked ? this.isItemUnlocked(a) : true);
-      const ub = Array.isArray(this.unlockedItems) ? this.unlockedItems.includes(b) : (this.isItemUnlocked ? this.isItemUnlocked(b) : true);
+      // 图鉴：解锁表 / 背包 / 非默认锁 任一即视为已揭示
+      const ua = typeof this.isItemDexRevealed === "function" ? this.isItemDexRevealed(a) : true;
+      const ub = typeof this.isItemDexRevealed === "function" ? this.isItemDexRevealed(b) : true;
       if (ua !== ub) return ua ? -1 : 1;
       const ia = ITEMS_DB[a] || {};
       const ib = ITEMS_DB[b] || {};
@@ -4027,9 +4430,8 @@ class Game {
     ids.forEach((id) => {
       const item = ITEMS_DB[id];
       if (!item) return;
-      const unlocked = Array.isArray(this.unlockedItems)
-        ? this.unlockedItems.includes(id)
-        : (this.isItemUnlocked ? this.isItemUnlocked(id) : true);
+      const unlocked =
+        typeof this.isItemDexRevealed === "function" ? this.isItemDexRevealed(id) : true;
 
       const tile = document.createElement("div");
       tile.className = `item-dex-tile${unlocked ? "" : " locked"}`;
@@ -4280,6 +4682,12 @@ class Game {
         }
       } catch (_) {}
     }
+    if (this.enemy && this.enemy.aiType === "elite_tri_region_gate") {
+      this.log(
+        "【裂隙打手】半血或击杀时会「裂隙觉醒」：出牌区将出现迟缓、低温等地块效果，并像精英一样干扰牌型。坚持到胜利可永久解锁该出牌区规则！",
+        "system"
+      );
+    }
     if (this.enemy && this.enemy.aiType === "boss2_poison") {
       this.log(
         "【手牌毒】带紫光绿边与角标 ☠数字 的牌已被污染；打出会全队叠毒（回合开始扣血）。换牌丢掉毒牌不触发。狗可解毒/守护。",
@@ -4439,6 +4847,12 @@ class Game {
 
   // 战斗结果回调（由 battle.js 调用）
   onBattleResult(win) {
+    try {
+      if (this._enemyIntentRefreshTimer) {
+        clearTimeout(this._enemyIntentRefreshTimer);
+        this._enemyIntentRefreshTimer = null;
+      }
+    } catch (_) {}
     // 无尽模式：自定义胜负后的波次/商店循环
     if (this.mode === "endless") {
       return this.onEndlessBattleResult(win);
@@ -4451,6 +4865,38 @@ class Game {
       this.clearPlayedSlotBattleEffects();
     } catch (_) {}
     if (win) {
+      // 第 1 层必经精英：战后永久解锁「三格出牌区」
+      try {
+        if (
+          this.enemy &&
+          this.enemy.aiType === "elite_tri_region_gate" &&
+          (this.map.floor || 1) === 1 &&
+          !this.triRegionUnlocked
+        ) {
+          this.triRegionUnlocked = true;
+          this.log(
+            "✨ 地下力量苏醒了！出牌区保持 5 格，并启用迟缓、低温等地块规则（各格具体类型以每场战斗场上为准）。",
+            "combo"
+          );
+          setTimeout(() => {
+            try {
+              this.showModal(
+                "裂隙苏醒",
+                [
+                  "地下力量稳定下来：出牌区仍为 5 格。地块效果类型如下（落在哪一格随关卡与战斗变化，以场上格子为准）：",
+                  "",
+                  "•【迟缓】：带伤害的牌，基础伤害 ×0.5",
+                  "•【低温】：单体治疗、全队治疗、护盾效果 ×0.5",
+                  "•【普通】：无上述地块修正",
+                  "",
+                  "提示：此后商店与掉落可能出现与区域配合的卡牌与道具。",
+                ].join("\n")
+              );
+            } catch (_) {}
+          }, 400);
+        }
+      } catch (_) {}
+
       let goldReward = this.enemy.gold || 20;
 
       // 道具：收割镰刀（额外金币 +50%）
@@ -4879,6 +5325,10 @@ class Game {
       const isHealCard = cardData && cardData.heal && !cardData.healAll && canUseThisCard;
       card.draggable = true;
       card.addEventListener("dragstart", (e) => {
+        try {
+          this._draggingPlayedCardIndex = null;
+          this._playedDragSourceIndex = null;
+        } catch (_) {}
         e.dataTransfer.setData(
           "text/plain",
           JSON.stringify({
@@ -4919,12 +5369,27 @@ class Game {
           return;
         }
         // dblclick 触发时 idx 仍对应当前渲染索引
-        const ok = this.battle.playCardToArea(idx);
+        if (this.requiresExplicitPlaySlot()) {
+          if (typeof this._pendingPlaySlotIndex !== "number") {
+            if (typeof this.showComboText === "function") {
+              this.showComboText("请先点击出牌区空地格，再双击打出（或拖入对应格）", 3200);
+            }
+            return;
+          }
+        }
+        const slotArg =
+          this.requiresExplicitPlaySlot() && typeof this._pendingPlaySlotIndex === "number"
+            ? this._pendingPlaySlotIndex
+            : undefined;
+        const ok = this.battle.playCardToArea(idx, slotArg);
         if (ok) {
+          if (typeof slotArg === "number") this.clearPendingPlaySlot();
           this.renderHand(this.battle.hand);
           this.renderPlayedArea(this.battle.playedCards);
           this.updatePlayedCount();
           this.updateEstimatedDamage();
+        } else if (typeof slotArg === "number" && typeof this.showComboText === "function") {
+          this.showComboText("该地块无法落牌（可能已被占用或已被破坏）", 2600);
         }
       });
     });
@@ -5330,9 +5795,27 @@ class Game {
     const sorted = [...indices].sort((a, b) => b - a);
     let moved = 0;
     const limit = this.getPlayedLimit ? this.getPlayedLimit() : 5;
+    let pendingFirst = true;
     for (const idx of sorted) {
       if (this.battle.playedCards.length >= limit) break;
-      if (this.battle.playCardToArea(idx)) moved++;
+      let slotArg;
+      if (pendingFirst && this.requiresExplicitPlaySlot() && typeof this._pendingPlaySlotIndex === "number") {
+        slotArg = this._pendingPlaySlotIndex;
+      }
+      const ok = this.battle.playCardToArea(idx, slotArg);
+      if (ok) {
+        moved++;
+        if (pendingFirst && typeof slotArg === "number") {
+          this.clearPendingPlaySlot();
+        }
+        pendingFirst = false;
+      } else {
+        if (pendingFirst && typeof slotArg === "number") {
+          this.showComboText("选择的地块不可用（可能已被占用或已被破坏）", 2600);
+          break;
+        }
+        pendingFirst = false;
+      }
     }
     if (moved > 0) {
       this.renderHand(this.battle.hand);
@@ -5372,6 +5855,12 @@ class Game {
       return;
     }
 
+    const playedSlotsSim = this.getSimulatedPlayedSlotsForPreview(
+      battle.playedCards,
+      battle.playedSlots,
+      effectiveIds.length
+    );
+
     const played = [];
     for (let i = 0; i < effectiveIds.length; i++) {
       const cardId = effectiveIds[i];
@@ -5381,12 +5870,18 @@ class Game {
       if (!this.isProfessionActive(profession)) continue;
       const level = typeof this.getCardLevel === "function" ? this.getCardLevel(cardId) : 1;
       const damageMult = 1 + (level - 1) * 0.5;
+      const hits = Math.max(1, Math.floor(card.hitCount || 1));
+      const slotIdx = playedSlotsSim[i] != null ? playedSlotsSim[i] : i;
+      const atkMult =
+        (card.damage || 0) > 0 && typeof this.getTriRegionAttackDamageFactor === "function"
+          ? this.getTriRegionAttackDamageFactor(slotIdx)
+          : 1;
       played.push({
         id: cardId,
         profession,
         archetype: card.archetype || card.type || "attack",
         bleed: Math.max(0, Math.floor(card.bleed || 0)),
-        baseDamage: Math.floor((card.damage || 0) * damageMult),
+        baseDamage: Math.floor((card.damage || 0) * damageMult * atkMult) * hits,
       });
     }
     if (played.length === 0) {
@@ -5419,11 +5914,146 @@ class Game {
     el.textContent = `${this.battle.playedCards.length}/${limit}`;
   }
 
-  // 渲染出牌区（本回合打出的牌，点击收回手牌）
+  /**
+   * 出牌区内换位/移格（HTML5 drop 与槽位处理共用）
+   */
+  _applyPlayedReorderFromPlayedIndex(fromIndex, slotEl) {
+    if (!this.battle || !slotEl) return;
+    if (slotEl.classList.contains("broken")) return;
+    const targetSlot = parseInt(slotEl.dataset.slotIndex, 10);
+    if (!Number.isFinite(targetSlot)) return;
+    const from = fromIndex;
+    this.battle._ensurePlayedParallelArrays();
+    const domCard = slotEl.querySelector ? slotEl.querySelector(".card[data-played-index]") : null;
+    const domPeer = domCard ? parseInt(domCard.dataset.playedIndex, 10) : NaN;
+    let moved = false;
+    // 目标格上已有另一张牌：用手牌区当中转（与双击收回同一条 battle 路径），再 fallback 数组互换
+    if (Number.isFinite(domPeer) && domPeer >= 0 && domPeer !== from) {
+      moved = this.swapPlayedCardsViaHandBuffer(from, domPeer);
+      if (!moved && this.battle.swapPlayedCardsAt(from, domPeer)) {
+        moved = true;
+        this.swapHealTargetsAtPlayedIndices(from, domPeer);
+      }
+    } else {
+      moved = this.battle.movePlayedCardToSlot(from, targetSlot);
+    }
+    if (moved) {
+      this.renderHand(this.battle.hand);
+      this.renderHealMarkers();
+      this.renderPlayedArea(this.battle.playedCards);
+      this.updateEstimatedDamage();
+      this.updatePlayedCount();
+    }
+  }
+
+  /**
+   * 出牌区槽位上的 drop：手牌打入；已出牌换位（dataTransfer / _draggingPlayedCardIndex）。
+   */
+  _handlePlayedAreaSlotDrop(e, slotEl) {
+    const container = document.getElementById("played-container");
+    if (!container || !slotEl || !this.battle) return;
+    e.preventDefault();
+    e.stopPropagation();
+    container.classList.remove("drop-target");
+    const clearSlotDragHighlights = () => {
+      container.querySelectorAll(".played-slot.drag-over-play").forEach((el) => {
+        el.classList.remove("drag-over-play");
+      });
+      container.querySelectorAll(".played-slot.drag-over-reorder").forEach((el) => {
+        el.classList.remove("drag-over-reorder");
+      });
+    };
+    clearSlotDragHighlights();
+    /** 必须在任何分支前快照（drop 里 getData 常为空，只能靠内存索引） */
+    const snapPlayedSource = this._playedDragSourceIndex;
+    const snapDragPlayedIdx = this._draggingPlayedCardIndex;
+    try {
+      document.body.classList.remove("dragging-played-card");
+    } catch (_) {}
+    try {
+      let data = {};
+      try {
+        data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
+      } catch (_) {
+        data = {};
+      }
+
+      let fromPlayed = null;
+      if (typeof snapPlayedSource === "number") {
+        fromPlayed = snapPlayedSource;
+      } else if (data.type === "played-card" && data.playedIndex != null && data.playedIndex !== "") {
+        const pi = Number(data.playedIndex);
+        if (Number.isFinite(pi)) fromPlayed = pi;
+      } else if (data.type === "play" || data.type === "heal") {
+        this._draggingPlayedCardIndex = null;
+        this._playedDragSourceIndex = null;
+      } else if (data.cardId != null && data.index != null && data.type !== "played-card") {
+        this._draggingPlayedCardIndex = null;
+        this._playedDragSourceIndex = null;
+      } else if (typeof snapDragPlayedIdx === "number") {
+        fromPlayed = snapDragPlayedIdx;
+      }
+      if (typeof fromPlayed === "number") {
+        this._draggingPlayedCardIndex = null;
+        this._playedDragSourceIndex = null;
+        this._applyPlayedReorderFromPlayedIndex(fromPlayed, slotEl);
+        return;
+      }
+
+      const handIndex =
+        Number.isFinite(Number(data.handIndex))
+          ? Number(data.handIndex)
+          : Number.isFinite(Number(data.index))
+            ? Number(data.index)
+            : NaN;
+      if (!Number.isFinite(handIndex) || !this.battle) return;
+      const slotEl2 = slotEl;
+      let slotArg;
+      if (this.requiresExplicitPlaySlot()) {
+        if (!slotEl2 || slotEl2.classList.contains("broken")) {
+          if (typeof this.showComboText === "function") {
+            this.showComboText("请把牌拖到某一格空地上", 2600);
+          }
+          return;
+        }
+        if (slotEl2.querySelector(".card")) {
+          if (typeof this.showComboText === "function") {
+            this.showComboText("该格已有牌，请拖到空格里", 2200);
+          }
+          return;
+        }
+        if (slotEl2.dataset && slotEl2.dataset.slotIndex != null) {
+          slotArg = parseInt(slotEl2.dataset.slotIndex, 10);
+        }
+      }
+      const ok = this.battle.playCardToArea(handIndex, slotArg);
+      if (ok) {
+        if (typeof slotArg === "number") this.clearPendingPlaySlot();
+        this.renderHand(this.battle.hand);
+        this.renderPlayedArea(this.battle.playedCards);
+        this.updateEstimatedDamage();
+        this.updatePlayedCount();
+      } else if (this.requiresExplicitPlaySlot() && typeof this.showComboText === "function") {
+        this.showComboText("无法落在此格（可能已被占用或已被破坏）", 2600);
+      }
+    } catch (_) {}
+  }
+
+    // 渲染出牌区（本回合打出的牌，点击收回手牌）
   renderPlayedArea(playedCards) {
     const container = document.getElementById("played-container");
     if (!container) return;
     container.innerHTML = "";
+    const tri = typeof this.hasTriRegionTerrain === "function" ? this.hasTriRegionTerrain() : !!this.triRegionUnlocked;
+    container.classList.toggle("tri-region-open", tri);
+    try {
+      const secLabel = document.querySelector("#played-area-wrap .section-label");
+      if (secLabel) {
+        secLabel.textContent = tri
+          ? "本回合出牌（点空地选格；格上标签为当前地块类型；已出牌可拖动换格或互换位）"
+          : "本回合出牌（基础最多 5 张，道具可提高；已出牌可拖动换格或互换位）";
+      }
+    } catch (_) {}
     const slots = this.getPlayedSlotCount ? this.getPlayedSlotCount() : 5;
     const brokenTurns = this.getBrokenPlayedSlotTurns ? this.getBrokenPlayedSlotTurns() : new Map();
     const permaCrack = new Set(
@@ -5438,43 +6068,106 @@ class Game {
     for (let s = 0; s < slots; s++) {
       const slotEl = document.createElement("div");
       let cls = "played-slot";
+      if (tri && s < 2) cls += " tri-region-slot";
+      if (tri && s >= 2) cls += " tri-region-plain";
       if (permaCrack.has(s)) cls += " broken crack-perma";
       else if (brokenTimed.has(s)) cls += " broken";
       slotEl.className = cls;
       slotEl.dataset.slotIndex = String(s);
+      if (tri && s < 2) {
+        const labels = ["迟缓", "低温"];
+        slotEl.dataset.triRegion = labels[s] || "";
+        const lab = document.createElement("span");
+        lab.className = "tri-region-label";
+        lab.textContent = labels[s] || "";
+        slotEl.appendChild(lab);
+      }
       if (brokenTurns.has(s)) slotEl.dataset.brokenTurns = String(brokenTurns.get(s));
       container.appendChild(slotEl);
     }
 
-    // 把牌放入各自槽位
+    // 把牌放入各自槽位（均可拖动：换格、与另一张牌换位；治疗牌仍可拖到队友头像）
     for (let i = 0; i < played.length; i++) {
+      const playedIndex = i;
       const cardId = played[i];
       const slotIdx = Number.isFinite(playedSlots[i]) ? playedSlots[i] : i;
       const targetSlot = container.querySelector(`.played-slot[data-slot-index="${slotIdx}"]`);
-      const cardEl = CardUtil.createCardElement(cardId, i);
+      const cardEl = CardUtil.createCardElement(cardId, playedIndex, { skipDefaultDrag: true });
       if (!cardEl || !targetSlot) continue;
-      cardEl.dataset.playedIndex = String(i);
+      cardEl.dataset.playedIndex = String(playedIndex);
       const card = CARDS_DB[cardId];
       const isHeal = !!(card && card.heal && !card.healAll);
-      // 治疗牌：允许“拖到队友头像/点击选目标”；其他牌：点击收回手牌
+      // 已出牌换位/移格：用 HTML5 拖放；每个 .played-slot 单独绑 drop（闭包带 slotEl），空白格与有牌格均可靠。
+      // 非拖动源牌 pointer-events:none 见 style.css（body.dragging-played-card）
+      cardEl.draggable = true;
+      cardEl.classList.add("card-in-play-area");
       if (isHeal) {
-        cardEl.draggable = true;
-        cardEl.title = (cardEl.title || "") + "\n（拖到队友头像选择目标 / 点击进入选目标模式）";
-        cardEl.addEventListener("dragstart", (e) => {
+        cardEl.title =
+          (cardEl.title || "") +
+          "\n（拖到其他格换位；拖到队友头像绑定治疗目标；点击头像选目标模式）";
+      } else {
+        cardEl.title = (cardEl.title || "") + "\n（拖到其他格换位或空白格；点击收回手牌）";
+      }
+      cardEl.addEventListener("dragstart", (e) => {
+        try {
+          this._playedDragSourceIndex = playedIndex;
+          this._draggingPlayedCardIndex = playedIndex;
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData(
+            "text/plain",
+            JSON.stringify({ type: "played-card", playedIndex: playedIndex })
+          );
+        } catch (_) {}
+        try {
+          document.body.classList.add("dragging-played-card");
+          cardEl.classList.add("played-drag-source");
+          // 另一张已出牌也是 draggable 时，Chrome 会把 drop 落在「牌」上而不是槽位，导致无法换位；拖曳期间先关掉非源牌的 draggable
+          container.querySelectorAll(".card.card-in-play-area").forEach((el) => {
+            if (el !== cardEl) {
+              el.dataset.playedDragPeerDisabled = "1";
+              el.draggable = false;
+            }
+          });
+        } catch (_) {}
+      });
+      cardEl.addEventListener("dragend", () => {
+        try {
+          container.querySelectorAll(".card.card-in-play-area[data-played-drag-peer-disabled]").forEach((el) => {
+            el.draggable = true;
+            delete el.dataset.playedDragPeerDisabled;
+          });
+        } catch (_) {}
+        try {
+          document.body.classList.remove("dragging-played-card");
+          container.querySelectorAll(".played-drag-source").forEach((el) => el.classList.remove("played-drag-source"));
+        } catch (_) {}
+        const clearIdx = this._draggingPlayedCardIndex;
+        const clearSrc = this._playedDragSourceIndex;
+        setTimeout(() => {
           try {
-            e.dataTransfer.setData("text/plain", JSON.stringify({ type: "heal-played", playedIndex: i }));
+            if (this._draggingPlayedCardIndex === clearIdx) this._draggingPlayedCardIndex = null;
+            if (this._playedDragSourceIndex === clearSrc) this._playedDragSourceIndex = null;
           } catch (_) {}
-        });
+        }, 120);
+        this._playedCardDragSuppressUntil = Date.now() + 380;
+        try {
+          container.querySelectorAll(".played-slot.drag-over-reorder").forEach((el) => {
+            el.classList.remove("drag-over-reorder");
+          });
+        } catch (_) {}
+      });
+      if (isHeal) {
         cardEl.addEventListener("click", () => {
+          if (this._playedCardDragSuppressUntil && Date.now() < this._playedCardDragSuppressUntil) return;
           if (this.gameEnded || !this.battle) return;
-          this._pendingHealPlayedIndex = i;
+          this._pendingHealPlayedIndex = playedIndex;
           this.showComboText("选择治疗目标：点击队友头像");
         });
       } else {
-        cardEl.draggable = false;
         cardEl.addEventListener("click", () => {
+          if (this._playedCardDragSuppressUntil && Date.now() < this._playedCardDragSuppressUntil) return;
           if (this.gameEnded || !this.battle) return;
-          this.battle.unplayCardFromArea(i);
+          this.battle.unplayCardFromArea(playedIndex);
           this.renderHand(this.battle.hand);
           this.renderPlayedArea(this.battle.playedCards);
           this.updateEstimatedDamage();
@@ -5484,32 +6177,95 @@ class Game {
       targetSlot.appendChild(cardEl);
     }
 
-    if (!container.dataset.dropBound) {
-      container.dataset.dropBound = "1";
-      container.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        const limit = this.getPlayedLimit ? this.getPlayedLimit() : 5;
-        if (this.battle && this.battle.playedCards.length < limit) {
-          container.classList.add("drop-target");
+    if (!container.dataset.playedDragOverBound) {
+      container.dataset.playedDragOverBound = "1";
+      const clearSlotDragHighlights = () => {
+        container.querySelectorAll(".played-slot.drag-over-play").forEach((el) => {
+          el.classList.remove("drag-over-play");
+        });
+        container.querySelectorAll(".played-slot.drag-over-reorder").forEach((el) => {
+          el.classList.remove("drag-over-reorder");
+        });
+      };
+      // capture：高亮用；真正 drop 绑在各 .played-slot 上（drop 多数不向 #played-container 冒泡）
+      container.addEventListener(
+        "dragover",
+        (e) => {
+          e.preventDefault();
+          try {
+            if (document.body.classList.contains("dragging-played-card")) {
+              e.dataTransfer.dropEffect = "move";
+            }
+          } catch (_) {}
+          const limit = this.getPlayedLimit ? this.getPlayedLimit() : 5;
+          clearSlotDragHighlights();
+          const slotEl = e.target && e.target.closest ? e.target.closest(".played-slot") : null;
+          try {
+            if (document.body.classList.contains("dragging-played-card") && slotEl && !slotEl.classList.contains("broken")) {
+              slotEl.classList.add("drag-over-reorder");
+            }
+          } catch (_) {}
+          if (
+            this.requiresExplicitPlaySlot() &&
+            slotEl &&
+            !slotEl.classList.contains("broken") &&
+            !slotEl.querySelector(".card")
+          ) {
+            slotEl.classList.add("drag-over-play");
+          }
+          if (this.battle && this.battle.playedCards.length < limit) {
+            container.classList.add("drop-target");
+          }
+        },
+        true
+      );
+      container.addEventListener("dragleave", (e) => {
+        if (e.target === container) {
+          container.classList.remove("drop-target");
+          clearSlotDragHighlights();
         }
       });
-      container.addEventListener("dragleave", () => container.classList.remove("drop-target"));
-      container.addEventListener("drop", (e) => {
-        e.preventDefault();
-        container.classList.remove("drop-target");
+    }
+
+    container.querySelectorAll(".played-slot").forEach((slotEl) => {
+      slotEl.addEventListener("dragover", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
         try {
-          const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
-          const handIndex = data.handIndex;
-          if (typeof handIndex !== "number" || !this.battle) return;
-          if (this.battle.playCardToArea(handIndex)) {
-            this.renderHand(this.battle.hand);
-            this.renderPlayedArea(this.battle.playedCards);
-            this.updateEstimatedDamage();
-            this.updatePlayedCount();
-          }
+          ev.dataTransfer.dropEffect = "move";
         } catch (_) {}
       });
+      slotEl.addEventListener("drop", (ev) => {
+        this._handlePlayedAreaSlotDrop(ev, slotEl);
+      });
+    });
+
+    if (!container.dataset.slotClickBound) {
+      container.dataset.slotClickBound = "1";
+      container.addEventListener("click", (e) => {
+        if (!this.requiresExplicitPlaySlot() || this.gameEnded) return;
+        const slotEl = e.target && e.target.closest ? e.target.closest(".played-slot") : null;
+        if (!slotEl) return;
+        if (e.target && e.target.closest && e.target.closest(".card")) return;
+        if (slotEl.classList.contains("broken")) return;
+        if (slotEl.querySelector(".card")) return;
+        const s = parseInt(slotEl.dataset.slotIndex, 10);
+        if (!Number.isFinite(s)) return;
+        this._pendingPlaySlotIndex = s;
+        this.updatePlayedSlotSelectionHighlight();
+        if (typeof this.showComboText === "function") {
+          this.showComboText(`已选择第 ${s + 1} 格，双击手牌或拖入此格出牌`, 2800);
+        }
+      });
     }
+
+    if (typeof this.bindPlayedSlotTileTooltips === "function") {
+      this.bindPlayedSlotTileTooltips(container);
+    }
+    if (typeof this.updateBattleTileRulesButtonVisibility === "function") {
+      this.updateBattleTileRulesButtonVisibility();
+    }
+    this.updatePlayedSlotSelectionHighlight();
     this.updatePlayedCount();
   }
 
@@ -5681,8 +6437,217 @@ class Game {
     });
   }
 
-  // 更新敌人 debuff 显示与意图
-  updateEnemyDebuffsAndIntent() {
+  /** 用于 title / aria 的 HTML 属性转义 */
+  escapeHtmlAttr(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  /**
+   * 解析敌人 intentText，生成意图条 UI 数据：招式图标、伤害数字、技能徽章（带说明）、底部可见文案。
+   */
+  buildEnemyIntentUiModel(enemy) {
+    const raw = String(enemy.intentText || "").trim();
+    const blind = Math.max(0, Math.floor(enemy.blind || 0));
+    const hitChance = Math.max(0.05, 1 - 0.2 * blind);
+    let computedDmg = enemy.atk || 10;
+    if ((enemy.slow || 0) > 0) computedDmg = Math.floor(computedDmg * 0.6);
+    if ((enemy.weakness || 0) > 0) computedDmg = Math.floor(computedDmg * 0.5);
+
+    const MECH = {
+      shatter: {
+        icon: "💣",
+        title: "破坏牌型",
+        desc: "你点击「出牌」结算前，会干扰并移除部分已打出的牌；被打碎的牌本回合伤害失效，并可能产生反噬伤害。",
+      },
+      burn: {
+        icon: "🔥",
+        title: "点燃格子",
+        desc: "烧毁出牌区若干格子，持续 2 个我方回合；该格无法放置卡牌。",
+      },
+      poison: { icon: "☠️", title: "手牌下毒", desc: "污染随机手牌；打出带毒牌可能令全队叠毒（换牌丢弃不触发）。" },
+      heal: { icon: "🩹", title: "回血", desc: "敌人回复生命值。" },
+      stun: { icon: "✨", title: "眩晕", desc: "我方下回合无法出牌。" },
+      armor: { icon: "🛡️", title: "护甲", desc: "提升护甲，降低你对其造成的有效伤害。" },
+      crack: { icon: "🌋", title: "裂地", desc: "永久塌陷 1 个出牌格（本场战斗）并叠加护甲。" },
+      eliteShatter: {
+        icon: "💣",
+        title: "干扰出牌",
+        desc: "你出牌结算前会打乱组合，部分已打出牌失效（精英：干扰出牌）。",
+        extraClass: "enemy-intent-destroy-icon",
+      },
+    };
+
+    const seen = new Set();
+    const badges = [];
+    const pushKey = (key) => {
+      const m = MECH[key];
+      if (!m || seen.has(key)) return;
+      seen.add(key);
+      const cls = ["enemy-intent-skill-icon", m.extraClass].filter(Boolean).join(" ");
+      badges.push({
+        key,
+        html: `<span class="${cls}" role="img" title="${this.escapeHtmlAttr(m.desc)}" aria-label="${this.escapeHtmlAttr(m.title)}">${m.icon}</span>`,
+      });
+    };
+
+    const ai = enemy.aiType || "";
+
+    if (enemy.eliteShatterIncoming && (ai === "elite1_shatter" || ai === "elite_tri_region_gate")) {
+      pushKey("eliteShatter");
+    } else {
+      if (raw.includes("破坏牌型")) pushKey("shatter");
+    }
+    if (raw.includes("点燃格子")) pushKey("burn");
+    if (raw.includes("下毒") || raw.includes("手牌下毒")) pushKey("poison");
+    if (raw.includes("回血")) pushKey("heal");
+    if (raw.includes("眩晕") && (raw.includes("我方") || raw.includes("无法出牌"))) pushKey("stun");
+    if (raw.includes("护甲")) pushKey("armor");
+    if (raw.includes("裂地") || raw.includes("塌陷")) pushKey("crack");
+
+    let typeIcon = "⚔️";
+    if (raw.includes("群攻")) typeIcon = "💥";
+    else if (raw.includes("眩晕") && raw.includes("下回合：眩晕")) typeIcon = "✨";
+    else if (raw.includes("下毒") && raw.includes("☠")) typeIcon = "☠️";
+    else if (raw.includes("回血")) typeIcon = "🩹";
+    else if (raw.includes("裂地") || raw.includes("🌋")) typeIcon = "🌋";
+    else if (raw.includes("护甲")) typeIcon = "🛡️";
+    else if (raw.includes("连击")) typeIcon = "⚔️";
+
+    let dmgText = "";
+    const dmgMatch = raw.match(/(\d+)\s*伤害/);
+    const comboMatch = raw.match(/\(\s*(\d+)\s*×\s*2\s*\)/);
+    if (comboMatch && comboMatch[1]) {
+      dmgText = `${comboMatch[1]}×2`;
+    } else if (dmgMatch && dmgMatch[1]) {
+      dmgText = String(dmgMatch[1]);
+    }
+
+    if (!dmgText && raw && raw.includes("攻击") && !raw.includes("×")) {
+      dmgText = String(computedDmg);
+    }
+    if (!raw) {
+      dmgText = String(computedDmg);
+      typeIcon = "⚔️";
+    }
+
+    let descLine = "";
+    if (!raw) {
+      descLine = `预告：约 ${computedDmg} 点伤害 · 敌人首次行动后将显示具体招式与技能图标`;
+    } else {
+      descLine = raw
+        .split("|")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .join(" · ");
+    }
+
+    const hitNote = blind > 0 ? `命中 ${(hitChance * 100).toFixed(0)}%` : "";
+    const fullTitle = [descLine, hitNote ? `（${hitNote}）` : ""].filter(Boolean).join("");
+
+    return {
+      typeIcon,
+      dmgText,
+      skillsHtml: badges.map((b) => b.html).join(""),
+      descLine,
+      hitNote,
+      fullTitle,
+      isDanger: !!(enemy && enemy.eliteShatterIncoming),
+    };
+  }
+
+  // 仅刷新敌人「意图」条（头顶图标/伤害/下回合文案）；与 debuff 徽章分离以便在动画结束后再切换「下回合」预告
+  _updateEnemyIntentDom() {
+    const enemy = this.battle?.enemy || this.enemy;
+    if (!enemy) return;
+    const intentEl = document.getElementById("enemy-intent");
+    if (!intentEl) return;
+    const iconEl = document.getElementById("enemy-intent-icon");
+    const dmgEl = document.getElementById("enemy-intent-dmg");
+    const skillsEl = document.getElementById("enemy-intent-skills");
+    const hitEl = document.getElementById("enemy-intent-hit");
+    const descEl = document.getElementById("enemy-intent-desc");
+
+    const skip = (enemy.stunned || 0) > 0;
+    if (skip) {
+      if (iconEl) iconEl.textContent = "✨";
+      if (skillsEl) skillsEl.textContent = "";
+      if (dmgEl) dmgEl.textContent = "";
+      if (hitEl) hitEl.textContent = "";
+      if (descEl) {
+        descEl.textContent = "眩晕中：本回合无法行动";
+        descEl.title = "眩晕中：本回合无法行动";
+        descEl.classList.remove("enemy-intent-danger");
+      }
+      intentEl.classList.remove("enemy-intent-danger");
+      return;
+    }
+
+    // 精英「破坏牌型」：玩家回合与战后意图统一显示预告（含机制说明，供头顶与悬停）
+    try {
+      const ai = enemy.aiType || "";
+      if (ai === "elite1_shatter" || ai === "elite_tri_region_gate") {
+        if (typeof enemy.eliteShatterCD !== "number") enemy.eliteShatterCD = 0;
+        let d = Math.floor(enemy.atk || 10);
+        if ((enemy.slow || 0) > 0) d = Math.floor(d * 0.6);
+        if ((enemy.weakness || 0) > 0) d = Math.floor(d * 0.5);
+        if (enemy.eliteShatterCD <= 0) {
+          // 文案不写「破坏牌型」，由右侧 💣 单独表示该类技能，避免与文字重复
+          enemy.intentText = `❌ ${d}伤害 | 将要干扰出牌结算（结算前生效）`;
+          enemy.eliteShatterIncoming = true;
+        } else {
+          enemy.intentText = `⚔️ 攻击 ${d}伤害 | 干扰技能冷却中`;
+          enemy.eliteShatterIncoming = false;
+        }
+      } else {
+        enemy.eliteShatterIncoming = false;
+      }
+    } catch (_) {
+      try {
+        enemy.eliteShatterIncoming = false;
+      } catch (_) {}
+    }
+
+    let computedDmg = enemy.atk || 10;
+    if ((enemy.slow || 0) > 0) computedDmg = Math.floor(computedDmg * 0.6);
+    if ((enemy.weakness || 0) > 0) computedDmg = Math.floor(computedDmg * 0.5);
+
+    const ui = typeof this.buildEnemyIntentUiModel === "function" ? this.buildEnemyIntentUiModel(enemy) : null;
+    if (iconEl) iconEl.textContent = (ui && ui.typeIcon) || "⚔️";
+    if (dmgEl) dmgEl.textContent = (ui && ui.dmgText) || "";
+    if (skillsEl) {
+      skillsEl.innerHTML = (ui && ui.skillsHtml) || "";
+    }
+    if (hitEl) hitEl.textContent = (ui && ui.hitNote) || "";
+    if (descEl) descEl.textContent = (ui && ui.descLine) || "";
+    const intentTip =
+      (ui && ui.fullTitle) ||
+      String(enemy.intentText || "").trim() ||
+      `攻击意图（约 ${computedDmg} 伤害）`;
+    intentEl.classList.toggle("enemy-intent-danger", !!(ui && ui.isDanger));
+    const wrap = intentEl.querySelector(".enemy-intent-wrap");
+    if (wrap) wrap.title = intentTip;
+    if (descEl) {
+      descEl.classList.toggle("enemy-intent-danger", !!(ui && ui.isDanger));
+      descEl.title = intentTip;
+    }
+  }
+
+  /**
+   * 更新敌人 debuff 显示与意图
+   * @param {number|{ deferIntentMs?: number }} [opts] — 传数字或 `{ deferIntentMs }` 时，仅延迟刷新「意图」条（毫秒），debuff 仍立即更新
+   */
+  updateEnemyDebuffsAndIntent(opts) {
+    const deferMs =
+      typeof opts === "number" && Number.isFinite(opts)
+        ? Math.max(0, opts)
+        : opts && typeof opts.deferIntentMs === "number" && Number.isFinite(opts.deferIntentMs)
+          ? Math.max(0, opts.deferIntentMs)
+          : 0;
     const enemy = this.battle?.enemy || this.enemy;
     if (!enemy) return;
     // 战斗中以 battle.enemy 为唯一真相，同步到 game.enemy，避免其它逻辑读到过期 debuff
@@ -5697,7 +6662,6 @@ class Game {
       this.enemy.vulnerableOnHit = b.vulnerableOnHit || 0;
     }
     const debuffsEl = document.getElementById("enemy-debuffs");
-    const intentEl = document.getElementById("enemy-intent");
     if (debuffsEl) {
       const badges = [];
       if ((enemy.stunned || 0) > 0) badges.push(`<span class="debuff-badge stun" data-debuff="stun" title="眩晕：敌人下回合无法行动。剩余 ${enemy.stunned} 回合">✨ ${enemy.stunned}</span>`);
@@ -5721,93 +6685,27 @@ class Game {
         setTimeout(() => debuffsEl.classList.remove("debuff-flash"), 420);
       } catch (_) {}
     }
-    if (intentEl) {
-      const blind = Math.max(0, Math.floor(enemy.blind || 0));
-      const hitChance = Math.max(0.05, 1 - 0.2 * blind);
-
-      const iconEl = document.getElementById("enemy-intent-icon");
-      const dmgEl = document.getElementById("enemy-intent-dmg");
-      const skillsEl = document.getElementById("enemy-intent-skills");
-      const hitEl = document.getElementById("enemy-intent-hit");
-
-      const setEmpty = () => {
-        if (iconEl) iconEl.textContent = "";
-        if (dmgEl) dmgEl.textContent = "";
-        if (skillsEl) skillsEl.textContent = "";
-        if (hitEl) hitEl.textContent = "";
-      };
-
-      const skip = (enemy.stunned || 0) > 0;
-      if (skip) {
-        if (iconEl) iconEl.textContent = "✨";
-        if (skillsEl) skillsEl.textContent = "";
-        if (dmgEl) dmgEl.textContent = "";
-        if (hitEl) hitEl.textContent = "";
-        return;
-      }
-
-      // 基础攻击伤害（用于：没在 intentText 里找到数字时兜底）
-      let computedDmg = enemy.atk || 10;
-      if ((enemy.slow || 0) > 0) computedDmg = Math.floor(computedDmg * 0.6);
-      if ((enemy.weakness || 0) > 0) computedDmg = Math.floor(computedDmg * 0.5);
-
-      const raw = enemy.intentText ? String(enemy.intentText || "").trim() : "";
-      let mainIcon = "⚔️";
-      let dmgVal = null;
-      let dmgFromRaw = false;
-      const skillIcons = [];
-
-      if (raw) {
-        // intentText 通常以“图标 + 说明”开头，如 ⚔️/💥/🩹/☠️
-        const iconMatch = raw.match(/^(\S+)/);
-        if (iconMatch && iconMatch[1]) mainIcon = iconMatch[1];
-
-        const dmgMatch = raw.match(/(\d+)\s*伤害/);
-        if (dmgMatch && dmgMatch[1]) {
-          dmgVal = Number(dmgMatch[1]);
-          dmgFromRaw = true;
+    if (deferMs > 0) {
+      try {
+        if (this._enemyIntentRefreshTimer) {
+          clearTimeout(this._enemyIntentRefreshTimer);
+          this._enemyIntentRefreshTimer = null;
         }
-
-        // 机制图标
-        if (raw.includes("机制：")) {
-          const mechPart = raw.split("机制：")[1] || "";
-          // 例如：💣 破坏牌型 / 🔥 点燃格子
-          if (mechPart.includes("破坏牌型")) skillIcons.push("💣");
-          if (mechPart.includes("点燃格子")) skillIcons.push("🔥");
-        }
-        if (raw.includes("破坏牌型")) skillIcons.push("💣");
-        if (raw.includes("点燃格子")) skillIcons.push("🔥");
-        if (raw.includes("下毒")) skillIcons.push("☠️");
-        if (raw.includes("回血")) skillIcons.push("🩹");
-        if (raw.includes("群攻")) skillIcons.push("💥");
-      } else {
-        // 没有 intentText：默认就是攻击
-        mainIcon = "⚔️";
-        dmgVal = computedDmg;
-      }
-
-      // raw 有“攻击”但没找到数字：用 computedDmg 补齐
-      if (dmgVal == null && raw && raw.includes("攻击")) {
-        dmgVal = computedDmg;
-        // raw 里没给出伤害数字（例如“回血 + 攻击”），把开头图标当作“技能图标”
-        if (!dmgFromRaw && mainIcon !== "⚔️" && mainIcon !== "💥") {
-          skillIcons.push(mainIcon);
-          mainIcon = "⚔️";
-        }
-      }
-      if (dmgVal == null) dmgVal = null;
-
-      // 只有“攻击存在伤害值”时：统一用红色“❌”当作伤害图标（对齐你的参考图）
-      if (dmgVal != null) mainIcon = "❌";
-
-      const uniqSkills = [...new Set(skillIcons)].filter((x) => x && x !== mainIcon);
-
-      if (iconEl) iconEl.textContent = mainIcon;
-      if (dmgEl) dmgEl.textContent = dmgVal != null ? String(dmgVal) : "";
-      // 细节（技能/命中率等）改为：鼠标移到 boss 头部悬浮窗口显示
-      if (skillsEl) skillsEl.innerHTML = "";
-      if (hitEl) hitEl.textContent = "";
+      } catch (_) {}
+      this._enemyIntentRefreshTimer = setTimeout(() => {
+        this._enemyIntentRefreshTimer = null;
+        if (this.gameEnded || !this.battle) return;
+        this._updateEnemyIntentDom();
+      }, deferMs);
+      return;
     }
+    try {
+      if (this._enemyIntentRefreshTimer) {
+        clearTimeout(this._enemyIntentRefreshTimer);
+        this._enemyIntentRefreshTimer = null;
+      }
+    } catch (_) {}
+    this._updateEnemyIntentDom();
   }
 
   // 更新单个队友的生命 / 护盾 /  debuff 显示
@@ -5852,22 +6750,128 @@ class Game {
     setTimeout(() => overlay.classList.add("hidden"), 2000);
   }
 
-  // 连击文字
+  // 连击文字（全局在传入时长基础上 +1s，便于看清技能说明）
   showComboText(text, durationMs = 1500) {
     const overlay = document.getElementById("damage-overlay");
     overlay.innerHTML = `<div class="combo-text">${text}</div>`;
     overlay.classList.remove("hidden");
+    const base = durationMs === undefined ? 1500 : Number(durationMs);
     // 重要技能/警告类提示：自动延长显示时间，避免“一闪而过”
-    let duration = Math.max(300, Number(durationMs) || 1500);
+    let duration = Math.max(300, (Number.isFinite(base) ? base : 1500) + 1000);
     try {
       const importantPattern = /(Boss|boss|破坏牌型|点燃格子|下毒|蓄力预告|警告|预告|眩晕|群攻|精英|技能)/;
-      if (importantPattern.test(String(text)) && duration < 3200) {
-        duration = 3200;
+      if (importantPattern.test(String(text)) && duration < 4200) {
+        duration = 4200;
       }
     } catch (_) {}
     setTimeout(() => {
       overlay.classList.add("hidden");
     }, duration);
+  }
+
+  /**
+   * 本场战斗是否应揭示「前三格地形」（裂隙打手 / 第1层 Boss，首次半血以下或本击击杀）
+   */
+  shouldRevealTriRegionTerrain(battle, { beforeHp, hpAfterPreview, maxHp }) {
+    if (!battle || battle.triRegionTerrainRevealed) return false;
+    if (this.triRegionUnlocked) return false;
+    const e = battle.enemy;
+    if (!e) return false;
+    const floor = this.map && this.map.floor ? this.map.floor : 1;
+    const ai = e.aiType || "";
+    const okEnemy = ai === "elite_tri_region_gate" || (ai === "boss1" && floor === 1);
+    if (!okEnemy) return false;
+    const mh = Math.max(1, Math.floor(maxHp || 1));
+    const bh = Math.max(0, Math.floor(beforeHp));
+    const ha = Math.max(0, Math.floor(hpAfterPreview));
+    const half = mh * 0.5;
+    const crossesHalf = bh > half && ha <= half;
+    const killingBlow = ha <= 0 && bh > 0;
+    return crossesHalf || killingBlow;
+  }
+
+  /**
+   * 裂隙觉醒演出：裂隙打手专属全屏技能视频（地块觉醒）→ 抖动 + 顶部文字 + 对话框说明地块；并激活本场 triRegionTilesActive
+   */
+  async runTriRegionTerrainRevealScene(battle) {
+    if (!battle || battle.triRegionTerrainRevealed) return;
+    battle.triRegionTerrainRevealed = true;
+    battle.triRegionTilesActive = true;
+    const enemy = battle.enemy;
+    const isTriGate = enemy && enemy.aiType === "elite_tri_region_gate";
+    // 与「破坏牌型」无关：仅在地块觉醒时播放裂隙打手技能演出（vedio 相对站点根目录）
+    const terrainIntroVideo = isTriGate ? "vedio/efe67012884f8b396899be8a962466ff.mp4" : null;
+    const terrainIntroSfx = null; // 例："vedio/efe67012884f8b396899be8a962466ff_sfx.mp3"
+    try {
+      if (
+        terrainIntroVideo &&
+        this.effects &&
+        typeof this.effects.playBossIntroVideo === "function"
+      ) {
+        await this.effects.playBossIntroVideo(terrainIntroVideo, {
+          maxMs: 5500,
+          muted: true,
+          sfxSrc: terrainIntroSfx || undefined,
+        });
+      }
+    } catch (_) {}
+    try {
+      this.log("🧱 裂隙觉醒：场上出现【迟缓】【低温】等地块（攻击伤害×0.5、治疗/护盾×0.5 等），其余为普通格——具体位置以本战格子为准！", "combo");
+    } catch (_) {}
+    try {
+      if (this.effects && typeof this.effects.shake === "function") this.effects.shake(true);
+    } catch (_) {}
+    try {
+      this.showComboText(
+        [
+          "【裂隙觉醒】",
+          "大地震颤，古老纹路爬上出牌区……",
+          "（完整规则见弹窗）",
+        ].join("\n"),
+        3500
+      );
+    } catch (_) {}
+    await new Promise((r) => setTimeout(r, 500));
+    try {
+      this.showModal(
+        "裂隙觉醒 · 地块效果说明",
+        [
+          "出牌区仍为 5 格。本次觉醒将布置【迟缓】【低温】等地块（负面）与普通格，具体落在哪一格以当前战斗界面为准。",
+          "",
+          "•【迟缓】：带「伤害」的牌，基础伤害 ×0.5",
+          "•【低温】：单体治疗、全队治疗、护盾效果 ×0.5",
+          "•【普通】：无上述地块修正",
+          "",
+          "提示：击败裂隙打手后，该出牌区规则会在后续战斗中常驻；不同关卡或 Boss 可能改变地块摆放。",
+        ].join("\n")
+      );
+    } catch (_) {}
+    try {
+      if (typeof this.renderPlayedArea === "function" && battle.playedCards) {
+        this.renderPlayedArea(battle.playedCards);
+      }
+    } catch (_) {}
+  }
+
+  /** 由 playCards 用 fullResult 预估扣血，逻辑需与结算段一致 */
+  previewDealtToEnemyFromResult(enemy, result) {
+    if (!enemy || !result) return 0;
+    const armor = enemy.armor || 0;
+    let raw = result.totalDamage || 0;
+    try {
+      const eb = this._eventRunDamageBuff;
+      if (eb && eb > 1) raw = Math.max(0, Math.floor(raw * eb));
+    } catch (_) {}
+    try {
+      const nextBuff = this._battleNextTurnDamageBuff;
+      if (nextBuff && nextBuff > 1) raw = Math.max(0, Math.floor(raw * nextBuff));
+    } catch (_) {}
+    const vuln = Math.max(0, Math.floor(enemy.vulnerable || 0));
+    if (vuln > 0) {
+      const mult = 1 + 0.25 * vuln;
+      raw = Math.max(0, Math.floor(raw * mult));
+    }
+    return Math.max(0, raw - armor);
   }
 
   // 队伍受到伤害（单体，随机目标）
@@ -6233,7 +7237,7 @@ class Game {
         const el = document.elementFromPoint(x, y);
         // boss 头部悬停：把原来下面的“意图/伤害/机制”改为浮动窗口展示
         const beHead = el && el.closest
-          ? el.closest("#enemy-sprite, #enemy-name, #enemy-layer, #enemy-intent, .enemy-info, #enemy-hp-bar")
+          ? el.closest("#enemy-sprite, #enemy-name, #enemy-layer, #enemy-intent, #enemy-intent-desc, .enemy-info, #enemy-hp-bar")
           : null;
         const g = window.gameInstance;
         const be = g && g.battle && g.battle.enemy ? g.battle.enemy : null;
@@ -6265,8 +7269,10 @@ class Game {
             t += `（命中 ${(hitChance * 100).toFixed(0)}%）`;
           }
 
+          const tipLines = t.split("|").map((s) => s.trim()).filter(Boolean);
+          const tipHtml = tipLines.length > 1 ? tipLines.join("<br/>") : t;
           showStatus(
-            `<span class="tooltip-title">Boss 行动</span><div class="tooltip-line base">${t}</div>`,
+            `<span class="tooltip-title">敌人意图</span><div class="tooltip-line base">${tipHtml}</div>`,
             x,
             y
           );

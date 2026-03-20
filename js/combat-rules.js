@@ -1,4 +1,14 @@
 // ===== 城市英雄 - 关卡配置 =====
+//
+// 【地块 / 出牌格】概念：每个格子可带有「地块效果」（增益或减益）；规则文案只描述效果类型，不绑定「第几格」。
+// 具体哪一格是什么效果随关卡 / Boss / 区域变化；当前实现与词典见 game.js getPlayedTileEffectCatalog() / getTriRegionBonusKindForSlot。
+//
+// 【Boss 技能顺延计划 — 测试通过后改 FLOORS 与 endless.js 的 bossSkillByStage】
+// • 第 2 关 Boss：接入「地块效果」相关 Boss 机制（当前仍在测试，暂不替换 aiType）
+// • 原第 2 关「恶魔校长 · boss2_poison」→ 调到第 3 关
+// • 原第 3 关「CTO · boss3_crack」→ 调到第 4 关
+// • 建议同步：原第 4 关「业委会 · boss4_tank」→ 第 5 关；原第 5 关「城市大Boss · boss5_control」保留终局或再顺延
+//
 const FLOORS = [
   {
     id: 1,

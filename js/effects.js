@@ -138,6 +138,133 @@ class EffectsManager {
     return new Promise((r) => setTimeout(r, ms));
   }
 
+  /**
+   * 全屏播放技能介绍视频（裂隙打手等）；结束后 resolve，失败或超时也会结束以免卡死
+   * @param {string} src - 相对站点根路径，如 vedio/xxx.mp4
+   * @param {{ maxMs?: number, muted?: boolean, sfxSrc?: string|null, sfxVolume?: number }} [videoOpts]
+   *   - muted 默认 true：关闭 MP4 内整条音轨（含背景音乐；标准视频无法只关 BGM 保留同轨音效）
+   *   - sfxSrc 可选：另存「仅技能音效」的音频文件（与视频同屏播放），用于保留音效而不带 BGM
+   */
+  async playBossIntroVideo(src, videoOpts = {}) {
+    const maxMs = typeof videoOpts.maxMs === "number" && videoOpts.maxMs > 0 ? videoOpts.maxMs : 5500;
+    if (!src || typeof document === "undefined") return;
+
+    await new Promise((resolve) => {
+      const wrap = document.createElement("div");
+      wrap.className = "boss-intro-video-overlay";
+      wrap.setAttribute("role", "dialog");
+      wrap.setAttribute("aria-label", "技能演出");
+
+      const video = document.createElement("video");
+      video.className = "boss-intro-video";
+      video.src = src;
+      video.playsInline = true;
+      video.setAttribute("playsinline", "");
+      video.setAttribute("webkit-playsinline", "");
+      video.controls = false;
+      // 默认静音：去掉 MP4 里混在一起的背景音乐（浏览器无法从单轨里只删 BGM）
+      const muteVideo = videoOpts.muted !== false;
+      video.defaultMuted = muteVideo;
+      video.muted = muteVideo;
+      video.volume = muteVideo ? 0 : 1;
+
+      /** @type {HTMLAudioElement|null} */
+      let sfx = null;
+      const sfxSrc = videoOpts.sfxSrc || null;
+      if (sfxSrc) {
+        try {
+          sfx = new Audio(sfxSrc);
+          sfx.volume =
+            typeof videoOpts.sfxVolume === "number" && videoOpts.sfxVolume >= 0 && videoOpts.sfxVolume <= 1
+              ? videoOpts.sfxVolume
+              : 1;
+        } catch (_) {
+          sfx = null;
+        }
+      }
+
+      const skip = document.createElement("button");
+      skip.type = "button";
+      skip.className = "boss-intro-video-skip pixel-font";
+      skip.textContent = "跳过";
+
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        try {
+          video.pause();
+        } catch (_) {}
+        try {
+          if (sfx) {
+            sfx.pause();
+            sfx.currentTime = 0;
+          }
+        } catch (_) {}
+        try {
+          wrap.remove();
+        } catch (_) {}
+        resolve();
+      };
+
+      const timer = setTimeout(finish, maxMs);
+
+      skip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        clearTimeout(timer);
+        finish();
+      });
+      wrap.addEventListener("click", (e) => {
+        if (e.target === wrap) {
+          clearTimeout(timer);
+          finish();
+        }
+      });
+      video.addEventListener("ended", () => {
+        clearTimeout(timer);
+        finish();
+      });
+      video.addEventListener("error", () => {
+        clearTimeout(timer);
+        finish();
+      });
+
+      wrap.appendChild(video);
+      wrap.appendChild(skip);
+      document.body.appendChild(wrap);
+
+      let playStarted = false;
+      const tryPlay = () => {
+        if (playStarted) return;
+        playStarted = true;
+        const p = video.play();
+        if (p && typeof p.catch === "function") {
+          p.catch(() => {
+            video.muted = true;
+            video.volume = 0;
+            return video.play().catch(() => {
+              clearTimeout(timer);
+              finish();
+            });
+          });
+        }
+        if (sfx) {
+          try {
+            sfx.currentTime = 0;
+            const sp = sfx.play();
+            if (sp && typeof sp.catch === "function") sp.catch(() => {});
+          } catch (_) {}
+        }
+      };
+      if (video.readyState >= 2) {
+        tryPlay();
+      } else {
+        video.addEventListener("canplay", tryPlay, { once: true });
+        video.addEventListener("loadeddata", tryPlay, { once: true });
+      }
+    });
+  }
+
   // Boss 破坏牌型完整动画序列（返回 Promise）
   async bossShatterSequence(opts) {
     const {
@@ -146,7 +273,20 @@ class EffectsManager {
       cardNames = [],
       fullDamage = 0,
       reducedDamage = 0,
+      introVideoSrc = null,   // 可选：全屏技能视频（裂隙打手地块觉醒已改在 game.runTriRegionTerrainRevealScene 播放）
+      introVideoSfxSrc = null, // 可选：单独导出的技能音效（无 BGM），与 mp4 同步播放；无则视频默认静音
     } = opts || {};
+
+    // 0. 可选：先播全屏技能视频，再接原有破坏牌型演出（裂隙打手地块视频见 game.runTriRegionTerrainRevealScene）
+    if (introVideoSrc) {
+      try {
+        await this.playBossIntroVideo(introVideoSrc, {
+          maxMs: 5500,
+          muted: true,
+          sfxSrc: introVideoSfxSrc || undefined,
+        });
+      } catch (_) {}
+    }
 
     // 1. 屏幕中央显示 Boss 发动技能
     const overlay = document.createElement("div");

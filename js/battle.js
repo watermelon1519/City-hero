@@ -45,6 +45,8 @@ class BattleSystem {
     this.hasMulligan = false;
     this.drawForNextTurn = 0;
     this.retrieveForNextTurn = [];
+    this.triRegionTilesActive = !!(this.game && this.game.triRegionUnlocked);
+    this.triRegionTerrainRevealed = !!(this.game && this.game.triRegionUnlocked);
 
     // 播放战斗音乐（根据是否是Boss）
     try {
@@ -105,7 +107,7 @@ class BattleSystem {
             this.game.showComboText(`⚠️ 预告：Boss 下回合 ${mechLabel(this.enemy.boss1NextMech)}`, 3200);
           }
           if (this.enemy.boss1Skill === "shatter" && typeof this.game.showComboText === "function") {
-            this.game.showComboText("💣 警告：本回合结算前将破坏牌型", 3200);
+            this.game.showComboText("警告：本回合结算前将破坏你的出牌组合", 3200);
           }
         }
       } catch (_) {}
@@ -120,6 +122,9 @@ class BattleSystem {
       }
       if (typeof this.game.resetHealBindings === "function") {
         this.game.resetHealBindings();
+      }
+      if (typeof this.game.clearPendingPlaySlot === "function") {
+        this.game.clearPendingPlaySlot();
       }
 
       // 手牌保留；出牌区在 endTurn 已清空并进入弃牌堆，此处无需再动
@@ -341,6 +346,11 @@ class BattleSystem {
         const cardId = cardsToResolve[i];
         const card = CARDS_DB[cardId];
         if (!card) continue;
+        const slotIdxHeal = Array.isArray(this.playedSlots) && this.playedSlots[i] != null ? this.playedSlots[i] : i;
+        const supMult =
+          this.game && typeof this.game.getTriRegionHealShieldFactor === "function"
+            ? this.game.getTriRegionHealShieldFactor(slotIdxHeal)
+            : 1;
 
         if (card.heal && !card.healAll) {
           const ownerProf = card.profession || "common";
@@ -350,7 +360,7 @@ class BattleSystem {
             if (typeof this.game.healTarget === "function") {
               const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
               const healMult = 1 + (level - 1) * 0.5;
-              this.game.healTarget(targetProf, Math.floor((card.heal || 0) * healMult), card.name);
+              this.game.healTarget(targetProf, Math.floor((card.heal || 0) * healMult * supMult), card.name);
             }
           }
         }
@@ -359,7 +369,7 @@ class BattleSystem {
           if (typeof this.game.healAll === "function") {
             const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
             const healMult = 1 + (level - 1) * 0.5;
-            this.game.healAll(Math.floor((card.healAll || 0) * healMult), card.name);
+            this.game.healAll(Math.floor((card.healAll || 0) * healMult * supMult), card.name);
           }
         }
 
@@ -381,7 +391,7 @@ class BattleSystem {
           if (typeof this.game.addShield === "function") {
             const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
             const shieldMult = 1 + (level - 1) * 0.5;
-            const amount = Math.floor((card.shield || 0) * shieldMult);
+            const amount = Math.floor((card.shield || 0) * shieldMult * supMult);
 
             // 护盾卡不再只绑定“warrior”，否则非战士队伍会出现“出了护盾牌但看不到护盾”的问题。
             // 规则：若该牌也是全队治疗（healAll），则护盾给全队；否则给该牌对应职业（若是 common，则给全队）。
@@ -422,12 +432,19 @@ class BattleSystem {
           const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
           const damageMult = 1 + (level - 1) * 0.5;
           const hits = Math.max(1, Math.floor(card.hitCount || 1));
+          const slotIdx = Array.isArray(this.playedSlots) && this.playedSlots[i] != null ? this.playedSlots[i] : i;
+          const atkSlotMult =
+            (card.damage || 0) > 0 &&
+            this.game &&
+            typeof this.game.getTriRegionAttackDamageFactor === "function"
+              ? this.game.getTriRegionAttackDamageFactor(slotIdx)
+              : 1;
           out.push({
             id: cardId,
             profession,
             archetype: card.archetype || card.type || "attack",
             bleed: Math.max(0, Math.floor(card.bleed || 0)),
-            baseDamage: Math.floor((card.damage || 0) * damageMult) * hits,
+            baseDamage: Math.floor((card.damage || 0) * damageMult * atkSlotMult) * hits,
           });
         }
         return out;
@@ -454,22 +471,53 @@ class BattleSystem {
         return;
       }
 
+      // ===== 裂隙觉醒（前三格地形）：优先于「破坏牌型」；半血以下首次或本击击杀时触发，且不与本回合破坏同时结算 =====
+      // 是否揭示仍在此用预览判定（用于跳过破坏牌型）；实际演出推迟到「造成伤害 + 血条动画」之后
+      let skipShatterForTerrain = false;
+      let pendingTerrainReveal = false;
+      try {
+        const beforeHpPreview = this.enemy.hp;
+        const maxHpPreview = this.enemy.maxHp || 1;
+        const dealtPreviewFull =
+          this.game && typeof this.game.previewDealtToEnemyFromResult === "function"
+            ? this.game.previewDealtToEnemyFromResult(this.enemy, fullResult)
+            : 0;
+        const hpAfterPreview = beforeHpPreview - dealtPreviewFull;
+        if (
+          this.game &&
+          typeof this.game.shouldRevealTriRegionTerrain === "function" &&
+          this.game.shouldRevealTriRegionTerrain(this, {
+            beforeHp: beforeHpPreview,
+            hpAfterPreview,
+            maxHp: maxHpPreview,
+          })
+        ) {
+          skipShatterForTerrain = true;
+          pendingTerrainReveal = true;
+        }
+      } catch (_) {}
+
       // ===== 第1层 Boss / 精英 特殊机制：在结算前破坏牌型 =====
       let reducedResult = fullResult;
       let shatterSelfDamage = 0;
       // 若 Boss 处于眩晕，本回合不触发“机制技能”（持续型效果除外）
       const shatterActive =
-        (this.enemy && this.enemy.aiType === "boss1" && this.enemy.boss1Skill === "shatter") ||
-        (this.enemy && this.enemy.aiType === "elite1_shatter" && ((this.enemy.eliteShatterCD ?? 0) <= 0));
+        !skipShatterForTerrain &&
+        ((this.enemy && this.enemy.aiType === "boss1" && this.enemy.boss1Skill === "shatter") ||
+          (this.enemy && this.enemy.aiType === "elite1_shatter" && ((this.enemy.eliteShatterCD ?? 0) <= 0)) ||
+          (this.enemy && this.enemy.aiType === "elite_tri_region_gate" && ((this.enemy.eliteShatterCD ?? 0) <= 0)));
       if (shatterActive && (this.enemy.stunned || 0) <= 0) {
         try {
           // 再次明确提醒：本回合结算前会破坏你的牌型（无论上一回合是否已经看过预告）
           try {
             if (this.enemy && this.enemy.aiType === "boss1" && typeof this.game.showComboText === "function") {
-              this.game.showComboText("💣 Boss 技能发动：本回合结算前将破坏你的牌型", 3200);
+              this.game.showComboText("Boss 技能发动：本回合结算前将破坏你的出牌组合", 3200);
             }
             if (this.enemy && this.enemy.aiType === "elite1_shatter" && typeof this.game.showComboText === "function") {
-              this.game.showComboText("💣 精英技能发动：本回合结算前将破坏你的牌型", 2600);
+              this.game.showComboText("精英技能：本回合结算前将破坏你的出牌组合", 2600);
+            }
+            if (this.enemy && this.enemy.aiType === "elite_tri_region_gate" && typeof this.game.showComboText === "function") {
+              this.game.showComboText("裂隙打手：本回合结算前将破坏你的出牌组合", 2600);
             }
           } catch (_) {}
 
@@ -480,7 +528,10 @@ class BattleSystem {
 
           if (dmgCards.length > 0) {
             const shuffled = [...dmgCards].sort(() => Math.random() - 0.5);
-            const maxBreak = (this.enemy && this.enemy.aiType === "elite1_shatter") ? 1 : 2;
+            const maxBreak =
+              this.enemy && (this.enemy.aiType === "elite1_shatter" || this.enemy.aiType === "elite_tri_region_gate")
+                ? 1
+                : 2;
             const picked = shuffled.slice(0, Math.min(maxBreak, shuffled.length));
             const removedIndices = new Set(picked.map((p) => p.idx));
             const removedNames = [];
@@ -547,6 +598,7 @@ class BattleSystem {
             this.game.log(`💣 ${this.enemy.name} 破坏了你的牌型：强制移除 ${removedNames.join("、")}，组合被打乱！`, "enemy");
 
             // 播放完整动画序列（技能文字 → 闪电 → 牌碎裂 → 伤害滚动）
+            // 裂隙打手「地块觉醒」全屏视频改在 runTriRegionTerrainRevealScene 播放，此处不再绑破坏牌型
             if (this.game.effects && typeof this.game.effects.bossShatterSequence === "function") {
               await this.game.effects.bossShatterSequence({
                 bossName: this.enemy.name,
@@ -554,6 +606,8 @@ class BattleSystem {
                 cardNames: removedNames,
                 fullDamage: fullDmg,
                 reducedDamage: reducedDmg,
+                introVideoSrc: null,
+                introVideoSfxSrc: null,
               });
             }
 
@@ -601,7 +655,7 @@ class BattleSystem {
       // 精英怪：频次降低为“2 回合 1 次”
       // - CD 含义：>0 表示还在冷却（本回合不触发），每个敌方回合结束 -1
       // - 触发后设为 1 → 下个敌方回合减到 0 → 再下个玩家回合才会触发（约等于每 2 回合 1 次）
-      if (this.enemy && this.enemy.aiType === "elite1_shatter") {
+      if (this.enemy && (this.enemy.aiType === "elite1_shatter" || this.enemy.aiType === "elite_tri_region_gate")) {
         if (typeof this.enemy.eliteShatterCD !== "number") this.enemy.eliteShatterCD = 0;
         if (shatterActive) {
           // 无尽模式：层数越高，精英技能触发越频繁（更短冷却）
@@ -715,6 +769,13 @@ class BattleSystem {
       // 让观感稍微停留一下
       await new Promise((r) => setTimeout(r, 450));
 
+      // 裂隙觉醒：先播完本次伤害的命中与掉血，再弹出地块说明（避免「先弹窗、血条才动」）
+      try {
+        if (pendingTerrainReveal && this.game && typeof this.game.runTriRegionTerrainRevealScene === "function") {
+          await this.game.runTriRegionTerrainRevealScene(this);
+        }
+      } catch (_) {}
+
       // Boss1 的“反噬伤害”：在我方回合结算时，同时对队伍造成伤害
       if (this.enemy && this.enemy.aiType === "boss1" && shatterSelfDamage > 0) {
         try {
@@ -800,6 +861,9 @@ class BattleSystem {
         if (!card || !this.game.isProfessionActive(card.profession || "common")) continue;
         const level = typeof this.game.getCardLevel === "function" ? this.game.getCardLevel(cardId) : 1;
         const levelMult = 1 + (level - 1) * 0.5;
+        const slotIdxCtrl = Array.isArray(this.playedSlots) && this.playedSlots[i] != null ? this.playedSlots[i] : i;
+        // 裂隙地块现为迟缓/低温，不再提供「控制位 +1 回合」加成
+        const ctrlExtra = 0;
         const controlTurns = (baseTurns) => Math.max(1, Math.floor((baseTurns || 1) * levelMult));
         let draw = 0;
         if (card.draw) draw += Math.max(0, Math.floor((card.draw || 0) * levelMult));
@@ -816,6 +880,7 @@ class BattleSystem {
         if (card.bleed) {
           // 组合拳等：流血叠加；可被道具进一步提升；等级提升基础流血量
           let add = Math.max(0, Math.floor((card.bleed || 0) * levelMult));
+          if (ctrlExtra) add += 1; // 控制位：持续/层数 +1（DoT）
           try {
             if (typeof ItemUtil !== "undefined" && this.game && Array.isArray(this.game.items)) {
               const eff = ItemUtil.calculateEffects(this.game.items, { cardProfession: card.profession, cardId: card.id }) || {};
@@ -824,10 +889,10 @@ class BattleSystem {
           } catch (_) {}
           bleed += add;
         }
-        if (card.stun) debuffs.stun = Math.max(debuffs.stun, controlTurns(1));
-        if (card.slow) debuffs.slow = Math.max(debuffs.slow, controlTurns(card.slow));
-        if (card.weakness) debuffs.weakness = Math.max(debuffs.weakness, controlTurns(card.weakness));
-        if (card.blind) debuffs.blind = Math.max(debuffs.blind, controlTurns(1));
+        if (card.stun) debuffs.stun = Math.max(debuffs.stun, controlTurns(1) + ctrlExtra);
+        if (card.slow) debuffs.slow = Math.max(debuffs.slow, controlTurns(card.slow) + ctrlExtra);
+        if (card.weakness) debuffs.weakness = Math.max(debuffs.weakness, controlTurns(card.weakness) + ctrlExtra);
+        if (card.blind) debuffs.blind = Math.max(debuffs.blind, controlTurns(1) + ctrlExtra);
         if (card.vulnerable) {
           // 新规则：易伤 +N 表示“每次敌人受到伤害后，易伤值再 +N（本场战斗持续叠加）”
           const add = Math.max(0, Math.floor((card.vulnerable || 0) * levelMult));
@@ -996,6 +1061,9 @@ class BattleSystem {
         this.game.updateEnemyDebuffsAndIntent();
       }
 
+      // 等出牌伤害/连击等演出略收尾后再进入敌方回合，避免敌方阶段与意图刷新抢在玩家动画前结束
+      await new Promise((r) => setTimeout(r, 320));
+
       await this.endTurn();
     } catch (e) {
       console.error("playCards error:", e);
@@ -1017,6 +1085,11 @@ class BattleSystem {
       this.playedCards = [];
       this.playedSlots = [];
     }
+    try {
+      if (this.game && typeof this.game.clearPendingPlaySlot === "function") {
+        this.game.clearPendingPlaySlot();
+      }
+    } catch (_) {}
 
     // 每回合结束后触发职业技能（如流氓回合结束回 5 血）
     try {
@@ -1034,7 +1107,8 @@ class BattleSystem {
   }
 
   // 从手牌打到出牌区（基础 5 张，可被道具提高）
-  playCardToArea(handIndex) {
+  // targetSlotIndex：指定落入第几格（0 起）；仅当该格可用时成功。不传则按「第一个空位」自动填充。
+  playCardToArea(handIndex, targetSlotIndex) {
     const slots = (this.game && typeof this.game.getPlayedSlotCount === "function") ? this.game.getPlayedSlotCount() : 5;
     const broken = (this.game && typeof this.game.getBrokenPlayedSlots === "function") ? this.game.getBrokenPlayedSlots() : new Set();
     // 可用槽位数 = 总槽位 - 烧毁槽位
@@ -1044,11 +1118,20 @@ class BattleSystem {
     // 找一个“未被烧毁 && 未被占用”的槽位
     const used = new Set(this.playedSlots || []);
     let slotIdx = -1;
-    for (let i = 0; i < slots; i++) {
-      if (broken && broken.has && broken.has(i)) continue;
-      if (used.has(i)) continue;
-      slotIdx = i;
-      break;
+    if (typeof targetSlotIndex === "number" && Number.isFinite(targetSlotIndex)) {
+      const t = Math.floor(targetSlotIndex);
+      if (t >= 0 && t < slots && !(broken && broken.has && broken.has(t)) && !used.has(t)) {
+        slotIdx = t;
+      } else {
+        return false;
+      }
+    } else {
+      for (let i = 0; i < slots; i++) {
+        if (broken && broken.has && broken.has(i)) continue;
+        if (used.has(i)) continue;
+        slotIdx = i;
+        break;
+      }
     }
     if (slotIdx < 0) return false;
     const cardId = this.hand.splice(handIndex, 1)[0];
@@ -1058,6 +1141,71 @@ class BattleSystem {
       this.playedSlots.push(slotIdx);
       this.playedCardPoisons.push(poison);
     }
+    return true;
+  }
+
+  /** 保证 playedSlots / playedCardPoisons 与 playedCards 等长，避免 swap 时只换了一半 */
+  _ensurePlayedParallelArrays() {
+    const n = this.playedCards.length;
+    if (!Array.isArray(this.playedSlots)) this.playedSlots = [];
+    let i = this.playedSlots.length;
+    while (i < n) {
+      this.playedSlots.push(i);
+      i++;
+    }
+    if (this.playedSlots.length > n) this.playedSlots.length = n;
+    if (!Array.isArray(this.playedCardPoisons)) this.playedCardPoisons = [];
+    i = this.playedCardPoisons.length;
+    while (i < n) {
+      this.playedCardPoisons.push(0);
+      i++;
+    }
+    if (this.playedCardPoisons.length > n) this.playedCardPoisons.length = n;
+  }
+
+  /**
+   * 交换出牌区内两张牌（显式「暂存→互换」：顺序、槽位、中毒标记同步）
+   */
+  swapPlayedCardsAt(a, b) {
+    if (a === b) return false;
+    const n = this.playedCards.length;
+    if (a < 0 || b < 0 || a >= n || b >= n) return false;
+    this._ensurePlayedParallelArrays();
+    const cA = this.playedCards[a];
+    const cB = this.playedCards[b];
+    this.playedCards[a] = cB;
+    this.playedCards[b] = cA;
+    const sA = this.playedSlots[a];
+    const sB = this.playedSlots[b];
+    this.playedSlots[a] = sB;
+    this.playedSlots[b] = sA;
+    if (this.playedCardPoisons.length === n) {
+      const pA = this.playedCardPoisons[a];
+      const pB = this.playedCardPoisons[b];
+      this.playedCardPoisons[a] = pB;
+      this.playedCardPoisons[b] = pA;
+    }
+    return true;
+  }
+
+  /**
+   * 将一张已打出的牌移到目标槽位；若目标格已有牌则与占用者交换
+   */
+  movePlayedCardToSlot(playedIndex, targetSlotIndex) {
+    const slots = this.game && typeof this.game.getPlayedSlotCount === "function" ? this.game.getPlayedSlotCount() : 5;
+    const broken =
+      this.game && typeof this.game.getBrokenPlayedSlots === "function" ? this.game.getBrokenPlayedSlots() : new Set();
+    if (playedIndex < 0 || playedIndex >= this.playedCards.length) return false;
+    const t = Math.floor(targetSlotIndex);
+    if (!Number.isFinite(t) || t < 0 || t >= slots) return false;
+    if (broken && broken.has && broken.has(t)) return false;
+    this._ensurePlayedParallelArrays();
+    const occupiedBy = this.playedSlots.findIndex((s, i) => i !== playedIndex && s === t);
+    if (occupiedBy >= 0) {
+      return this.swapPlayedCardsAt(playedIndex, occupiedBy);
+    }
+    if (this.playedSlots[playedIndex] === t) return false;
+    this.playedSlots[playedIndex] = t;
     return true;
   }
 
@@ -1319,7 +1467,7 @@ class BattleSystem {
             this.game.log(`💣 ${this.enemy.name} 出手：本回合将破坏你的牌型结算！`, "enemy");
             try {
               if (typeof this.game.showComboText === "function") {
-                this.game.showComboText("💣 Boss 技能：破坏牌型（本回合结算前生效）", 3200);
+                this.game.showComboText("Boss 技能：本回合结算前将破坏你的出牌组合", 3200);
               }
             } catch (_) {}
           } else if (chosen === "burnSlots") {
@@ -1431,6 +1579,12 @@ class BattleSystem {
           await enemyAttack(Math.floor(baseAtk * 1.25), { damageType: "direct" });
           this.enemy.intentText = `✨ 下回合：眩晕（我方无法出牌）`;
         }
+      } else if (ai === "elite_tri_region_gate") {
+        // 裂隙打手：地形「裂隙觉醒」改在玩家出牌造成伤害时（半血/击杀）触发，敌方回合仅普攻
+        const ramp = 1 + Math.min(0.18, (actIndex - 1) * 0.03);
+        const dmg = Math.floor(baseAtk * ramp);
+        await enemyAttack(dmg);
+        this.enemy.intentText = `⚔️ 下回合：攻击 (${applyDebuffMult(dmg)} 伤害)`;
       } else {
         // 普通怪：逐回合稍微变强，且偶尔双击
         const isElite = !!(this.enemy && this.enemy.isElite);
@@ -1463,13 +1617,14 @@ class BattleSystem {
       if ((this.enemy.blind || 0) > 0) this.enemy.blind--;
 
       // 精英破坏牌型：冷却递减（2 回合 1 次）
-      if (this.enemy && this.enemy.aiType === "elite1_shatter") {
+      if (this.enemy && (this.enemy.aiType === "elite1_shatter" || this.enemy.aiType === "elite_tri_region_gate")) {
         if (typeof this.enemy.eliteShatterCD !== "number") this.enemy.eliteShatterCD = 0;
         if (this.enemy.eliteShatterCD > 0) this.enemy.eliteShatterCD--;
       }
 
+      // 敌方攻击动画与数字飘字结束后，再刷新为「下回合」意图（defer 仅延迟意图条，debuff 已立即更新）
       if (typeof this.game.updateEnemyDebuffsAndIntent === "function") {
-        this.game.updateEnemyDebuffsAndIntent();
+        this.game.updateEnemyDebuffsAndIntent({ deferIntentMs: 820 });
       }
     } catch (e) {
       console.error("enemyTurn error:", e);
